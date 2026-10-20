@@ -29,7 +29,7 @@ pub async fn mousetrap(ctx: &Context, message: &Message) {
     if let Some(member) = message.member.as_ref() {
         if let Some(joined_at) = member.joined_at {
             let joined = joined_at.as_secs();
-            if now - joined > (60 * 60 * 24 * 7) {
+            if (now - joined) > (60 * 60 * 24 * 7) {
                 should_unban = true;
             }
         }
@@ -54,13 +54,27 @@ pub async fn mousetrap(ctx: &Context, message: &Message) {
         }
     }
 
-    if let Err(err) = ctx.http
+    if let Err(err) = ctx
+        .http
         .create_ban(guild_id.clone(), id)
-        .delete_message_seconds(603_800)
+        .delete_message_seconds(604_800)
         .reason(reason)
-        .await {
+        .await
+    {
         error(&format!("Failed to ban user\n└ {:?}", err));
         return;
+    }
+
+    if let Err(err) = ctx
+        .http
+        .delete_message(message.channel_id, message.id)
+        .reason(reason)
+        .await
+    {
+        error(&format!(
+            "Failed to delete mousetrap message from {}\n└ {:?}",
+            username, err
+        ));
     }
 
     if should_unban {
