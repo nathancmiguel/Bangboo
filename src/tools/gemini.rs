@@ -3,9 +3,20 @@ use genai::Client;
 use once_cell::sync::Lazy;
 use std::error::Error;
 
+use crate::functions::error;
+
 const MODEL_GEMINI: &str = "gemini-3-flash-preview";
 
-pub static GEMINI: Lazy<Client> = Lazy::new(|| Client::default());
+pub static GEMINI: Lazy<Client> = Lazy::new(|| {
+    let client = match Client::new() {
+        Ok(client) => client,
+        Err(err) => {
+            error("Failed to create Gemini client");
+            panic!();
+        },
+    };
+    client
+});
 
 pub async fn get_text(prompt: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
     _ = GEMINI.resolve_service_target(MODEL_GEMINI).await?;
