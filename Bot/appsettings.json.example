@@ -1,0 +1,12 @@
+{
+    "Discord": {
+        "Token": ""
+    },
+    "Logging": {
+        "LogLevel": {
+            "Default": "Debug",
+            "System": "Information",
+            "Microsoft": "Information"
+        }
+    }
+}
