@@ -46,15 +46,15 @@ builder.Services
     .AddHttpClient()
     .AddApplicationCommands((options, services) =>
     {
-        var cmdHandler = (HandlerCommandResultHandler<ApplicationCommandContext>)
+        var cmdHandler = (ErrorCommandResultHandler<ApplicationCommandContext>)
             Activator.CreateInstance(
-                typeof(HandlerCommandResultHandler<ApplicationCommandContext>),
+                typeof(ErrorCommandResultHandler<ApplicationCommandContext>),
                 System.Reflection.BindingFlags.Instance |
                 System.Reflection.BindingFlags.Public |
                 System.Reflection.BindingFlags.NonPublic,
                 binder: null,
                 args: null,
-                culture: null)!;
+                culture: null)!;;
         options.ResultHandler = cmdHandler;
     })
     .AddGatewayHandlers(typeof(Program).Assembly);

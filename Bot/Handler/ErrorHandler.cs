@@ -16,18 +16,18 @@ public class BotException(string message, bool deferred = false, Exception? inne
     public bool Deferred { get; } = deferred;
 }
 
-public class HandlerCommandResultHandler<TContext> : IApplicationCommandResultHandler<TContext>
+public class ErrorCommandResultHandler<TContext> : IApplicationCommandResultHandler<TContext>
     where TContext : IApplicationCommandContext
 {
-    public static HandlerCommandResultHandler<TContext> Default => new();
+    public static ErrorCommandResultHandler<TContext> Default => new();
 
-    public static HandlerCommandResultHandler<TContext> Ephemeral => new EphemeralApplicationCommandResultHandler();
+    public static ErrorCommandResultHandler<TContext> Ephemeral => new EphemeralApplicationCommandResultHandler();
 
-    protected HandlerCommandResultHandler()
+    protected ErrorCommandResultHandler()
     {
     }
 
-    private sealed class EphemeralApplicationCommandResultHandler : HandlerCommandResultHandler<TContext>
+    private sealed class EphemeralApplicationCommandResultHandler : ErrorCommandResultHandler<TContext>
     {
         public override ValueTask<InteractionMessageProperties> GetFailMessageAsync(IFailResult failResult, TContext context, IServiceProvider services)
         {
