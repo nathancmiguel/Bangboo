@@ -1,3 +1,4 @@
+using Bot.Handler;
 using Bot.Services;
 using Bot.Utils.Constants;
 using Microsoft.Extensions.Options;
@@ -14,7 +15,7 @@ public class MemberAdd(IOptions<Channels> channels, IGlobalService globalService
         if (arg.IsBot) return;
 
         var channel = await client.GetChannelAsync(channels.Value.Announcement) as TextChannel
-            ?? throw new InvalidOperationException(
+            ?? throw new BotException(
                 $"The configured announcement channel ({channels.Value.Announcement}) is not a text channel.");
         var card = await globalService.GlobalMessage((User)arg, EMemberEvent.Join);
         var stream = card.AsStream();

@@ -1,3 +1,4 @@
+using Bot.Handler;
 using Bot.Services;
 using Bot.Utils.Constants;
 using Microsoft.Extensions.Options;
@@ -15,7 +16,7 @@ public class BanAdd(IOptions<Channels> channels, IGlobalService globalService, R
         if (arg.User.IsBot) return;
 
         var channel = await client.GetChannelAsync(channels.Value.Announcement) as TextChannel
-                      ?? throw new InvalidOperationException(
+                      ?? throw new BotException(
                           $"The configured announcement channel ({channels.Value.Announcement}) is not a text channel.");
         var card = await globalService.GlobalMessage(arg.User, EMemberEvent.Mod);
         var stream = card.AsStream();

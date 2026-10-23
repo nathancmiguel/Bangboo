@@ -1,3 +1,4 @@
+using Bot.Handler;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NetCord;
@@ -9,6 +10,7 @@ namespace Bot.Services;
 public enum EMemberEvent
 {
     Join,
+    Boost,
     Leave,
     Mod
 }
@@ -28,6 +30,7 @@ public class GlobalService : IGlobalService, IDisposable
 
     private readonly SKBitmap _defaultAvatar;
     private readonly SKBitmap _newBackground;
+    private readonly SKBitmap _boostBackground;
     private readonly SKBitmap _modBackground;
     private readonly SKBitmap _leftBackground;
     private readonly SKFont _fredokaFont;
@@ -39,6 +42,7 @@ public class GlobalService : IGlobalService, IDisposable
     {
         _defaultAvatar = LoadBitmap("Assets/member/default_avatar.png");
         _newBackground = LoadBitmap("Assets/cards/card-new.png");
+        _boostBackground = LoadBitmap("Assets/cards/card-boost.png");
         _modBackground = LoadBitmap("Assets/cards/card-mod.png");
         _leftBackground = LoadBitmap("Assets/cards/card-left.png");
 
@@ -61,6 +65,7 @@ public class GlobalService : IGlobalService, IDisposable
         {
             EMemberEvent.Join => _newBackground,
             EMemberEvent.Leave => _leftBackground,
+            EMemberEvent.Boost => _boostBackground,
             _ => _modBackground
         };
         canvas.DrawBitmap(background, 0, 0, sampling);
@@ -148,14 +153,14 @@ public class GlobalService : IGlobalService, IDisposable
     private static SKBitmap LoadBitmap(string relativePath)
     {
         return SKBitmap.Decode(Path.Combine(AppContext.BaseDirectory, relativePath))
-            ?? throw new InvalidOperationException($"Failed to load image asset '{relativePath}'.");
+            ?? throw new BotException($"Failed to load image asset '{relativePath}'.");
     }
 
     private static SKFont LoadFont(string relativePath, float size)
     {
         using var stream = File.OpenRead(Path.Combine(AppContext.BaseDirectory, relativePath));
         var typeface = SKTypeface.FromStream(stream)
-            ?? throw new InvalidOperationException($"Failed to load font asset '{relativePath}'.");
+            ?? throw new BotException($"Failed to load font asset '{relativePath}'.");
         return new SKFont(typeface, size);
     }
 
