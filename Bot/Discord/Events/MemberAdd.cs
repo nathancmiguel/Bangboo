@@ -20,6 +20,7 @@ public class MemberAdd(IOptions<Channels> channels, IGlobalService globalService
         var stream = card.AsStream();
         var propriedadesMensagem = new MessageProperties()
         {
+            Content = $"<t:{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}:F>",
             Attachments = new[] { new AttachmentProperties("card.png", stream) }
         };
         await channel.SendMessageAsync(propriedadesMensagem);

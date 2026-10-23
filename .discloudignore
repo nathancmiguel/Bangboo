@@ -14,6 +14,8 @@
 /.idea
 /Bot/assets/icons
 /Bot/assets/figma
+/Bot/bin
+/Bot/obj
 /discloud
 
 # Files
@@ -23,6 +25,7 @@
 /.gitignore
 /LICENSE
 /README.md
+/Bot/appsettings.json.example
 
 # Extensions
 *.fig
