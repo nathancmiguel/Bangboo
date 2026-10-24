@@ -1,4 +1,5 @@
 pub mod colors;
+mod de;
 pub mod emojis;
 pub mod error;
 pub mod fab;

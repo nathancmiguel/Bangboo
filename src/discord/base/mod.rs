@@ -1,7 +1,4 @@
 pub mod app;
-pub mod creators;
-pub mod handlers;
+pub mod router;
 
 pub use app::*;
-pub use creators::*;
-pub use handlers::*;

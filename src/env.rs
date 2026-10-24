@@ -1,43 +1,30 @@
-use crate::functions::*;
-use colored::Colorize;
-use dotenvy::dotenv;
-use once_cell::sync::Lazy;
-use serde::Deserialize;
-use std::collections::HashMap;
-use std::env;
+use crate::models::{BotError, BotResult};
 
-#[derive(Deserialize)]
-pub struct EnvSchema {
-    pub BOT_TOKEN: String,
-    pub DISCLOUD_TOKEN: String,
-    pub GEMINI_API_KEY: String,
+/// Configuração lida do ambiente. Substitui o `Lazy<EnvSchema>` global
+/// (que dava `panic!` em qualquer ponto do programa no primeiro acesso).
+pub struct Settings {
+    pub bot_token: String,
+    pub discloud_token: String,
 }
 
-pub static ENV: Lazy<EnvSchema> = Lazy::new(|| {
-    if let Err(err) = dotenv() {
-        if let Err(e) = dotenvy::from_filename("./packages/bot/.env") {
-            error(&format!("Failed to load .env file\n└{}", err));
-            panic!();
+impl Settings {
+    pub fn load() -> BotResult<Self> {
+        // O .env é opcional: em produção (Discloud) as variáveis já vêm do ambiente.
+        if dotenvy::dotenv().is_err() {
+            tracing::debug!("arquivo .env não encontrado, usando apenas o ambiente");
         }
+
+        // O `genai` lê GEMINI_API_KEY direto do ambiente; só validamos se o recurso estiver ligado.
+        #[cfg(feature = "gemini")]
+        var("GEMINI_API_KEY")?;
+
+        Ok(Self {
+            bot_token: var("BOT_TOKEN")?,
+            discloud_token: var("DISCLOUD_TOKEN")?,
+        })
     }
+}
 
-    let env_vars = env::vars().collect::<HashMap<String, String>>();
-
-    let env: EnvSchema = match serde_json::to_string(&env_vars) {
-        Ok(env_str) => match serde_json::from_str(&env_str) {
-            Ok(schema) => schema,
-            Err(err) => {
-                error(&format!("Failed to parse environment variables\n└{}", err));
-                panic!();
-            }
-        },
-        Err(err) => {
-            error(&format!("Failed to parse environment variables\n└{}", err));
-            panic!();
-        }
-    };
-
-    log(&format!("{} {}", "☰ Environment variables".bright_purple(), "loaded ✓".bright_purple()));
-
-    env
-});
+fn var(name: &str) -> BotResult<String> {
+    std::env::var(name).map_err(|_| -> BotError { format!("variável de ambiente `{name}` ausente").into() })
+}

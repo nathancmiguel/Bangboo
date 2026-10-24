@@ -1,4 +1,6 @@
-use serde::{Serialize, Deserialize};
+use super::de::str_to_u64;
+use serde::{Deserialize, Serialize};
+use twilight_model::id::{Id, marker::RoleMarker};
 
 #[derive(Serialize, Deserialize)]
 pub struct Guild {
@@ -7,13 +9,6 @@ pub struct Guild {
     pub roles: Roles,
 }
 
-fn str_to_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct Channels {
@@ -33,4 +28,14 @@ pub struct Roles {
     pub stf: u64,
     #[serde(deserialize_with = "str_to_u64")]
     pub boosters: u64,
+}
+
+impl Guild {
+    /// Dono (kernel) ou moderador (stf). Centraliza a checagem que estava copiada
+    /// em `moderate.rs` e `filters.rs`, cada uma com seus próprios `Lazy<Id<RoleMarker>>`.
+    pub fn is_staff(&self, roles: &[Id<RoleMarker>]) -> bool {
+        roles
+            .iter()
+            .any(|role| role.get() == self.roles.kernel || role.get() == self.roles.stf)
+    }
 }

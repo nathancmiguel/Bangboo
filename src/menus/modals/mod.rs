@@ -1,3 +1,5 @@
+mod common;
+
 pub mod ban;
 pub mod delete_message;
 pub mod kick;

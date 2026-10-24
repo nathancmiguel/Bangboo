@@ -1,42 +1,51 @@
-use crate::{constants::GUILD, discord::Context};
-use once_cell::sync::Lazy;
-use std::error::Error;
-use twilight_cache_inmemory::CacheableMember;
-use twilight_model::id::marker::GuildMarker;
-use twilight_model::id::{
-    marker::{RoleMarker, UserMarker},
-    Id,
+use crate::{
+    constants::GUILD,
+    discord::Context,
+    models::BotResult,
+};
+use twilight_model::{
+    gateway::payload::incoming::InteractionCreate,
+    id::{
+        Id,
+        marker::{GuildMarker, UserMarker},
+    },
 };
 
-pub fn filter_messages_by_user_id(ctx: &Context, user_ids: &[Id<UserMarker>]) {}
+/// Quem executou a interação é dono/moderador?
+pub fn invoker_is_staff(interaction: &InteractionCreate) -> bool {
+    interaction
+        .member
+        .as_ref()
+        .is_some_and(|member| GUILD.is_staff(&member.roles))
+}
 
+/// Remove da lista os usuários que são dono/moderadores (eles não podem ser alvo de ações de moderação).
 pub async fn filter_users_from_mod_action(
     ctx: &Context,
-    guild_id: &Id<GuildMarker>,
+    guild_id: Id<GuildMarker>,
     user_ids: &[Id<UserMarker>],
-) -> Result<Vec<Id<UserMarker>>, Box<dyn Error + Send + Sync>> {
-    static KERNEL_ROLE: Lazy<Id<RoleMarker>> =
-        Lazy::new(|| Id::<RoleMarker>::new(GUILD.roles.kernel));
-    static STF_ROLE: Lazy<Id<RoleMarker>> = Lazy::new(|| Id::<RoleMarker>::new(GUILD.roles.stf));
+) -> BotResult<Vec<Id<UserMarker>>> {
+    let mut filtered = Vec::with_capacity(user_ids.len());
 
-    let mut filtered_users = Vec::with_capacity(user_ids.len());
-    for id in user_ids {
-        let roles = match ctx.cache.member(guild_id.clone(), id.clone()) {
-            Some(member) => member.roles().to_vec(),
+    for &id in user_ids {
+        // `map` solta o guard do cache imediatamente (nada de segurar lock durante `.await`).
+        let cached = ctx
+            .cache
+            .member(guild_id, id)
+            .map(|member| GUILD.is_staff(member.roles()));
+
+        let is_staff = match cached {
+            Some(is_staff) => is_staff,
             None => {
-                let member = ctx
-                    .http
-                    .guild_member(guild_id.clone(), id.clone())
-                    .await?
-                    .model()
-                    .await?;
-                member.roles.clone()
+                let member = ctx.http.guild_member(guild_id, id).await?.model().await?;
+                GUILD.is_staff(&member.roles)
             }
         };
-        if !roles.contains(&KERNEL_ROLE) && !roles.contains(&STF_ROLE) {
-            filtered_users.push(id.clone());
+
+        if !is_staff {
+            filtered.push(id);
         }
     }
 
-    Ok(filtered_users)
+    Ok(filtered)
 }

@@ -1,62 +1,59 @@
-use std::fmt::format;
-use crate::discord::Context;
-use crate::functions::error;
-use twilight_model::channel::message::component::*;
-use twilight_model::channel::message::{Component, MessageFlags};
-use twilight_model::gateway::payload::incoming::InteractionCreate;
-use twilight_model::guild::Ban;
-use twilight_model::http::interaction::{
-    InteractionResponse, InteractionResponseData, InteractionResponseType,
+use crate::{
+    constants::ids,
+    discord::Context,
+    functions::show_modal,
 };
-use twilight_util::builder::message::{LabelBuilder, SelectMenuBuilder, SelectMenuOptionBuilder, TextDisplayBuilder};
+use twilight_model::{
+    channel::message::{Component, component::SelectMenuType},
+    gateway::payload::incoming::InteractionCreate,
+    guild::Ban,
+};
+use twilight_util::builder::message::{
+    LabelBuilder, SelectMenuBuilder, SelectMenuOptionBuilder, TextDisplayBuilder,
+};
 
-pub async fn unban_modal(ctx: Context, interaction: &Box<InteractionCreate>, bans: &[Ban]) {
-    let warning = TextDisplayBuilder::new("# Warning").build();
-    let warning_text = TextDisplayBuilder::new("Bangboo will automatically filter and remove the guild owner and moderators if any are selected.").build();
+/// Limite de opções de um select menu do Discord.
+pub const MAX_UNBAN_OPTIONS: usize = 25;
 
-    let mut select_menu = SelectMenuBuilder::new("users", SelectMenuType::Text)
-        .max_values(bans.len() as u8)
+fn truncate(text: &str, max_chars: usize) -> String {
+    text.chars().take(max_chars).collect()
+}
+
+pub async fn unban_modal(ctx: &Context, interaction: &InteractionCreate, bans: &[Ban]) {
+    // Antes: `max_values(bans.len() as u8)` e uma opção por ban, o que quebra com mais de 25 bans.
+    let shown = &bans[..bans.len().min(MAX_UNBAN_OPTIONS)];
+
+    let mut menu = SelectMenuBuilder::new("users", SelectMenuType::Text)
+        .max_values(shown.len() as u8)
         .min_values(1)
         .placeholder("Select at least one user");
 
-    for ban in bans {
-        select_menu = select_menu.option(SelectMenuOptionBuilder::new(&ban.user.name, ban.user.id.to_string())
-            .description(ban.reason.as_ref().unwrap_or(&String::new()))
-            .build())
+    for ban in shown {
+        let mut option =
+            SelectMenuOptionBuilder::new(truncate(&ban.user.name, 100), ban.user.id.to_string());
+
+        // Descrição vazia é rejeitada pela API (mín. 1 caractere); só definimos se houver motivo.
+        if let Some(reason) = ban.reason.as_deref().filter(|reason| !reason.is_empty()) {
+            option = option.description(truncate(reason, 100));
+        }
+
+        menu = menu.option(option.build());
     }
 
-    let select_menu = select_menu.build();
-
-    let user_select = LabelBuilder::new(
-        "User(s)",
-        Component::SelectMenu(
-            select_menu
-        ),
-    )
-    .build();
-
-    let modal_response = InteractionResponse {
-        kind: InteractionResponseType::Modal,
-        data: Some(InteractionResponseData {
-            custom_id: Some("modal/moderate/unban".into()),
-            title: Some("Unban user(s)".into()),
-            components: Some(vec![
-                Component::TextDisplay(warning),
-                Component::TextDisplay(warning_text),
-                Component::Label(user_select),
-            ]),
-            flags: Some(MessageFlags::IS_COMPONENTS_V2),
-            ..Default::default()
-        }),
-    };
-
-    let res = ctx
-        .http
-        .interaction(interaction.application_id.clone())
-        .create_response(interaction.id.clone(), &interaction.token, &modal_response)
-        .await;
-
-    if let Err(err) = res {
-        error(&format!("Error trying to respond interaction\n{:?}", err));
+    let mut components = Vec::new();
+    if bans.len() > shown.len() {
+        components.push(Component::TextDisplay(
+            TextDisplayBuilder::new(format!(
+                "Showing the first {} of {} banned users.",
+                shown.len(),
+                bans.len()
+            ))
+            .build(),
+        ));
     }
+    components.push(Component::Label(
+        LabelBuilder::new("User(s)", Component::SelectMenu(menu.build())).build(),
+    ));
+
+    show_modal(ctx, interaction, ids::MODAL_UNBAN, "Unban user(s)", components).await;
 }

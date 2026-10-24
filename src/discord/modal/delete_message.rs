@@ -1,142 +1,80 @@
-use crate::discord::{Context, ModalHandler};
-use crate::functions::{
-    defer_reply, error, get_modal_data, modal_labels_to_hash, officer_cui_action_embed,
-    update_reply,
+use super::ModJob;
+use crate::{
+    discord::Context,
+    functions::now_secs,
+    menus::modals::delete_message::MAX_DELETE_LIMIT,
+    models::BotResult,
 };
-use async_trait::async_trait;
-use std::error::Error;
-use twilight_model::application::interaction::modal::ModalInteractionComponent;
-use twilight_model::channel::message::MessageFlags;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
-use twilight_model::id::marker::UserMarker;
-use twilight_model::id::Id;
-use twilight_util::builder::InteractionResponseDataBuilder;
+use twilight_util::snowflake::Snowflake;
 
-pub struct DeleteMessage;
+/// Bulk delete não aceita mensagens com mais de 14 dias (margem de 1h).
+const MAX_AGE_SECS: i64 = 14 * 24 * 60 * 60 - 3600;
 
-#[async_trait]
-impl ModalHandler for DeleteMessage {
-    fn custom_id(&self) -> String {
-        "modal/moderate/delete-message".into()
-    }
+pub async fn run(ctx: &Context, interaction: &InteractionCreate) -> BotResult {
+    let Some(job) = ModJob::begin(ctx, interaction).await else {
+        return Ok(());
+    };
 
-    async fn run(
-        &self,
-        ctx: Context,
-        interaction: &Box<InteractionCreate>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let modal_data = get_modal_data(interaction).unwrap();
+    let Some(users) = job.fields.users("users") else {
+        job.fail("Failed to read the selected users.").await;
+        return Ok(());
+    };
+    let Some(channel_id) = interaction.channel.as_ref().map(|channel| channel.id) else {
+        job.fail("Failed to read the channel.").await;
+        return Ok(());
+    };
 
-        defer_reply(&ctx, interaction, true).await;
+    // A API só aceita 1..=100 (antes: valor inválido virava 0 e a requisição falhava).
+    let limit = job
+        .fields
+        .text("limit")
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .map(|value| value.clamp(1, MAX_DELETE_LIMIT))
+        .unwrap_or(1);
 
-        let modal_components = modal_labels_to_hash(&modal_data.components);
-
-        let users = if let Some(component) = modal_components.get("users") {
-            let ModalInteractionComponent::UserSelect(menu) = component else {
-                error("Failed to parse user field.");
+    let messages = match ctx.http.channel_messages(channel_id).limit(limit).await {
+        Ok(response) => match response.model().await {
+            Ok(messages) => messages,
+            Err(err) => {
+                tracing::error!(?err, "falha ao desserializar mensagens");
+                job.fail("Failed to read the channel messages.").await;
                 return Ok(());
-            };
-            menu.values.as_slice()
-        } else {
-            error("Failed to parse user field.");
-            return Ok(());
-        };
-
-        let limit = if let Some(component) = modal_components.get("limit") {
-            match &component {
-                ModalInteractionComponent::TextInput(modal_interaction_text_input) => {
-                    modal_interaction_text_input
-                        .value
-                        .as_str()
-                        .parse::<u16>()
-                        .unwrap_or(0)
-                }
-                _ => 0 as u16,
             }
-        } else {
-            error("Failed to parse reason field.");
+        },
+        Err(err) => {
+            tracing::error!(?err, "falha ao buscar mensagens");
+            job.fail("Failed to fetch the channel messages.").await;
             return Ok(());
-        };
-
-        delete_message_action(&ctx, interaction, users, limit).await;
-
-        Ok(())
-    }
-}
-
-pub async fn delete_message_action(
-    ctx: &Context,
-    interaction: &Box<InteractionCreate>,
-    ids: &[Id<UserMarker>],
-    limit: u16,
-) {
-    let Some(guild_id) = interaction.guild_id.as_ref() else {
-        error("Error trying to access unknow guild.");
-        return;
-    };
-
-    let Some(channel) = interaction.channel.as_ref() else {
-        error("Error trying to access unknown channel.");
-        return;
-    };
-
-    let user = match interaction.member.as_ref() {
-        Some(member) => {
-            if let Some(user) = member.user.as_ref() {
-                user
-            } else {
-                error("Error trying to access unknow user.");
-                return;
-            }
-        }
-        None => {
-            error("Error trying to access unknow member.");
-            return;
         }
     };
 
-    let mut success = Vec::new();
-    let mut failed = Vec::new();
+    let now_ms = now_secs() * 1000;
+    let ids: Vec<_> = messages
+        .iter()
+        .filter(|message| users.contains(&message.author.id))
+        .filter(|message| now_ms - message.id.timestamp() < MAX_AGE_SECS * 1000)
+        .map(|message| message.id)
+        .collect();
 
-    let messages = match ctx.http.channel_messages(channel.id).limit(limit).await {
-        Ok(res) => {
-            let mut body_msg = match res.model().await {
-                Ok(model) => model,
-                Err(err) => {
-                    error(&format!("Failed to deserialize messages\n└ {:?}", err));
-                    return;
-                }
-            };
-            body_msg
-                .iter()
-                .filter(|msg| ids.contains(&msg.author.id))
-                .map(|msg| msg.id)
-                .collect::<Vec<_>>()
+    // bulk delete exige de 2 a 100 mensagens; com 1 usamos o delete individual.
+    let result = match ids.as_slice() {
+        [] => {
+            job.fail("No recent messages from the selected users were found.").await;
+            return Ok(());
         }
+        [single] => ctx.http.delete_message(channel_id, *single).await.map(drop),
+        many => ctx.http.delete_messages(channel_id, many).await.map(drop),
+    };
+
+    let (success, failed) = match result {
+        Ok(()) => (users.to_vec(), Vec::new()),
         Err(err) => {
-            error(&format!("Failed to fetch messages\n└ {:?}", err));
-            return;
+            tracing::error!(?err, "falha ao apagar mensagens");
+            (Vec::new(), users.to_vec())
         }
     };
 
-    match ctx
-        .http
-        .delete_messages(channel.id, messages.as_slice())
-        .await
-    {
-        Ok(_) => success = ids.iter().map(|id| id).collect(),
-        Err(err) => {
-            error(&format!("Failed to delete messages\n└ {:?}", err));
-            failed = ids.iter().map(|id| id).collect();
-        }
-    }
-
-    let embed = officer_cui_action_embed(user, "Delete messages", &success, &failed, "");
-
-    let payload = InteractionResponseDataBuilder::new()
-        .flags(MessageFlags::EPHEMERAL)
-        .embeds(vec![embed])
-        .build();
-
-    update_reply(ctx, interaction, payload).await;
+    job.finish("Delete messages", &success, &failed, "").await;
+    Ok(())
 }

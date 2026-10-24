@@ -1,12 +1,13 @@
-use crate::constants::*;
-use crate::discord::*;
-use crate::functions::*;
-use async_trait::async_trait;
-use std::error::Error;
+use crate::{
+    constants::COLORS,
+    discord::Context,
+    functions::{get_app_command_data, reply_with_embed},
+    models::BotResult,
+};
 use twilight_model::{
     application::{
-        command::{Command, CommandOption, CommandType},
-        interaction::{application_command::CommandOptionValue, InteractionContextType},
+        command::{Command, CommandType},
+        interaction::{InteractionContextType, application_command::CommandOptionValue},
     },
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
@@ -16,83 +17,60 @@ use twilight_util::{
     snowflake::Snowflake,
 };
 
-pub struct Age;
+pub const NAME: &str = "age";
 
-#[async_trait]
-impl SlashCommandHandler for Age {
-    fn command(&self) -> Command {
-        let user_opt = CommandOption::from(UserBuilder::new("user", "Select an user").build());
-        CommandBuilder::new(
-            "age",
-            "Displays your or another user's account creation date.",
-            CommandType::ChatInput,
+pub fn command() -> Command {
+    let user_opt = UserBuilder::new("user", "Select an user").build();
+
+    CommandBuilder::new(
+        NAME,
+        "Displays your or another user's account creation date.",
+        CommandType::ChatInput,
+    )
+    .option(user_opt)
+    .contexts([InteractionContextType::Guild])
+    .build()
+}
+
+pub async fn run(ctx: &Context, interaction: &InteractionCreate) -> BotResult {
+    let Some(data) = get_app_command_data(interaction) else {
+        return Ok(());
+    };
+
+    let selected = data.options.iter().find_map(|option| match &option.value {
+        CommandOptionValue::User(id) if option.name == "user" => Some(*id),
+        _ => None,
+    });
+
+    // O Discord já manda o usuário escolhido em `resolved`: não precisa de cache nem de HTTP.
+    // Antes, se o usuário não estivesse no cache o comando respondia com a data de quem o
+    // executou, sem avisar.
+    let user = match selected {
+        Some(id) => data.resolved.as_ref().and_then(|resolved| resolved.users.get(&id)),
+        None => interaction.author(),
+    };
+
+    let Some(user) = user else {
+        reply_with_embed(
+            ctx,
+            interaction,
+            MessageFlags::EPHEMERAL,
+            COLORS.danger,
+            "Could not find that user.",
         )
-        .option(user_opt)
-        .contexts([InteractionContextType::Guild])
-        .build()
-    }
+        .await;
+        return Ok(());
+    };
 
-    async fn run(
-        &self,
-        ctx: Context,
-        interaction: &Box<InteractionCreate>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let command_data = get_app_command_data(interaction).unwrap();
+    let name = user.global_name.as_deref().unwrap_or(&user.name);
+    let timestamp = user.id.timestamp() / 1000;
 
-        let Some(guild_id) = &interaction.guild_id else {
-            error("Guild id not found.");
-            return Ok(());
-        };
+    let message = if interaction.locale.as_deref() == Some("pt-BR") {
+        format!("**{name}** criou a conta <t:{timestamp}:R> em um(a) <t:{timestamp}:F> ")
+    } else {
+        format!("**{name}** account was created <t:{timestamp}:R> on <t:{timestamp}:F> ")
+    };
 
-        let options = &command_data.options;
-
-        let mut name = String::new();
-        let mut timestamp: i64 = 0;
-
-        let mut user_id = None;
-        if let Some(opt) = options.get(0) {
-            if let CommandOptionValue::User(uid) = opt.value {
-                user_id = Some(uid.clone());
-            }
-        }
-
-        if let Some(uid) = user_id {
-            if let Some(user) = ctx.cache.user(uid.clone()) {
-                name = user.global_name.as_ref().unwrap_or(&user.name).clone();
-                timestamp = uid.timestamp() / 1000;
-            }
-        }
-
-        if name.is_empty() {
-            if let Some(member) = &interaction.member {
-                if let Some(user) = &member.user {
-                    name = user.global_name.as_ref().unwrap_or(&user.name).clone();
-                    timestamp = user.id.timestamp() / 1000;
-                }
-            }
-        }
-
-        if name.is_empty() {
-            error("Error trying to access unknown user.");
-            return Ok(());
-        }
-
-        let mut age = String::new();
-        let locale = interaction.locale.clone().unwrap_or("en-US".to_string());
-        if locale == "pt-BR" {
-            age = format!(
-                "**{}** criou a conta <t:{}:R> em um(a) <t:{}:F> ",
-                name, timestamp, timestamp
-            );
-        } else {
-            age = format!(
-                "**{}** account was created <t:{}:R> on <t:{}:F> ",
-                name, timestamp, timestamp
-            );
-        }
-
-        reply_with_embed(&ctx, interaction, MessageFlags::empty(), COLORS.green, &age).await;
-
-        Ok(())
-    }
+    reply_with_embed(ctx, interaction, MessageFlags::empty(), COLORS.green, &message).await;
+    Ok(())
 }

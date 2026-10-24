@@ -1,64 +1,28 @@
 use crate::{
-    discord::*,
-    functions::{error, global_message},
+    discord::Context,
+    functions::{global_message, system_channel_id},
+    models::BotResult,
 };
-use std::error::Error;
-use twilight_gateway::{Event, EventType};
+use twilight_gateway::EventType;
+use twilight_model::gateway::payload::incoming::MemberAdd;
 
-pub struct MemberAdded;
-
-#[async_trait]
-impl EventHandler for MemberAdded {
-    fn event(&self) -> EventType {
-        EventType::MemberAdd
+pub async fn handle(ctx: &Context, event: &MemberAdd) -> BotResult {
+    if event.member.user.bot {
+        return Ok(());
     }
 
-    async fn run(&self, ctx: Context, event: Event) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let member_add = match event {
-            Event::MemberAdd(e) => e,
-            _ => return Ok(()),
-        };
+    let Some(channel_id) = system_channel_id(ctx, event.guild_id).await? else {
+        tracing::warn!(guild = %event.guild_id, "canal de sistema não configurado");
+        return Ok(());
+    };
 
-        if member_add.member.user.bot {
-            return Ok(());
-        }
-
-        let guild_id = &member_add.guild_id;
-
-        let mut system_channel_id = None;
-
-        if let Some(cached_guild) = ctx.cache.guild(guild_id.clone()) {
-            if let Some(sys_channel_id) = cached_guild.system_channel_id() {
-                system_channel_id = Some(sys_channel_id);
-            }
-        }
-
-        if system_channel_id.is_none() {
-            if let Ok(guild) = ctx.http.guild(guild_id.clone()).await?.model().await {
-                if let Some(sys_channel_id) = guild.system_channel_id {
-                    system_channel_id = Some(sys_channel_id);
-                }
-            }
-        }
-
-        if system_channel_id.is_none() {
-            error("System channel not set for guild.");
-            return Ok(());
-        }
-
-        let system_channel_id = system_channel_id.unwrap();
-
-        let user = &member_add.user;
-
-        global_message(
-            &ctx,
-            &system_channel_id,
-            EventType::MemberAdd,
-            Some(&member_add.member),
-            user,
-        )
-        .await;
-
-        Ok(())
-    }
+    global_message(
+        ctx,
+        channel_id,
+        EventType::MemberAdd,
+        Some(&event.member),
+        &event.member.user,
+    )
+    .await;
+    Ok(())
 }

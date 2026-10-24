@@ -1,21 +1,13 @@
-use colored::{ColoredString, Colorize};
+use tracing_subscriber::EnvFilter;
 
-pub fn success(message: &str) {
-    println!("{} {}", "✔".bright_green(), message.bright_green());
-}
+/// Logs via `tracing`: é o que o twilight já usa internamente, então os eventos do gateway
+/// e do HTTP passam a aparecer no mesmo lugar. Ajuste com `RUST_LOG` (ex.: `RUST_LOG=bot=debug`).
+pub fn init_tracing() {
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn,bot=info"));
 
-pub fn error(message: &str) {
-    println!("{} {}", "✘".bright_red(), message.red());
-}
-
-pub fn warn(message: &str) {
-    println!("{} {message}", "⚠".bright_yellow());
-}
-
-pub fn log(message: &str) {
-    println!("{message}");
-}
-
-pub fn colored_log(message: ColoredString) {
-    println!("{message}");
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
 }

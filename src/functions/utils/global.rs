@@ -1,211 +1,163 @@
-use crate::constants::*;
-use crate::discord::Context;
-use crate::functions::*;
-use chrono::Utc;
+use crate::{constants::*, discord::Context, functions::skia::*, functions::*};
 use skia_safe::{EncodedImageFormat, ISize, Point};
-use twilight_model::util::Timestamp;
-use std::time::{SystemTime, UNIX_EPOCH};
 use twilight_gateway::EventType;
-use twilight_model::guild::Member;
-use twilight_model::http::attachment::Attachment;
-use twilight_model::id::marker::ChannelMarker;
-use twilight_model::id::Id;
-use twilight_model::user::User;
+use twilight_model::{
+    guild::Member,
+    http::attachment::Attachment,
+    id::{Id, marker::ChannelMarker},
+    user::User,
+};
 use twilight_util::builder::embed::{EmbedAuthorBuilder, EmbedBuilder, ImageSource};
-use twilight_util::snowflake::Snowflake;
+
+/// Baixa o avatar do usuário (com timeout, via `reqwest::Client` compartilhado) ou usa o padrão.
+async fn fetch_avatar(ctx: &Context, user: &User) -> Vec<u8> {
+    let Some(url) = display_avatar_url(user, 512) else {
+        return IMG_DEFAULT_AVATAR.to_vec();
+    };
+
+    // `error_for_status` evita tratar uma página de erro (404/429) como se fosse uma imagem.
+    let bytes = async {
+        let response = ctx.web.get(url).send().await?.error_for_status()?;
+        response.bytes().await
+    }
+    .await;
+
+    match bytes {
+        Ok(bytes) if !bytes.is_empty() => bytes.to_vec(),
+        Ok(_) => IMG_DEFAULT_AVATAR.to_vec(),
+        Err(err) => {
+            tracing::warn!(?err, "falha ao baixar o avatar; usando o avatar padrão");
+            IMG_DEFAULT_AVATAR.to_vec()
+        }
+    }
+}
+
+/// Renderiza o card em PNG. É trabalho de CPU (decodificar, redimensionar, desenhar texto e
+/// codificar um PNG 2800x560), então roda em `spawn_blocking` e não trava as threads async.
+/// Como os objetos do Skia nascem e morrem dentro desta função, também some a
+/// necessidade do "escopo para evitar problema com o skia" que existia antes.
+fn render_card(
+    background: &[u8],
+    avatar: &[u8],
+    name: &str,
+    nickname: &str,
+) -> Result<Vec<u8>, &'static str> {
+    let mut surface = skia_safe::surfaces::raster_n32_premul(ISize {
+        width: 2800,
+        height: 560,
+    })
+    .ok_or("failed to create canvas surface")?;
+    let canvas = surface.canvas();
+
+    let background = load_image_from_bytes(background).ok_or("failed to load background image")?;
+    canvas.draw_image(&background, Point { x: 0.0, y: 0.0 }, None);
+
+    // Se o avatar baixado estiver corrompido, cai para o padrão em vez de abortar o card.
+    let avatar = load_image_from_bytes(avatar)
+        .or_else(|| load_image_from_bytes(IMG_DEFAULT_AVATAR))
+        .ok_or("failed to decode user avatar image")?;
+    let avatar = resize_image(&avatar, 400, 400).ok_or("failed to resize user avatar image")?;
+    draw_circle(canvas, &avatar, 204.0, 360.0, 200.0);
+
+    let fredoka = font_collection(FONT_FREDOKA).ok_or("failed to load title font")?;
+    let roboto = font_collection(FONT_ROBOTO).ok_or("failed to load subtitle font")?;
+    draw_text(canvas, &fredoka, name, 200.0, 530.0, 140.0);
+    draw_text(canvas, &roboto, &format!("@{nickname}"), 96.0, 530.0, 380.0);
+
+    surface
+        .image_snapshot()
+        .encode(None, EncodedImageFormat::PNG, Some(100))
+        .map(|data| data.to_vec())
+        .ok_or("failed to encode card image")
+}
 
 pub async fn global_message(
     ctx: &Context,
-    channel_id: &Id<ChannelMarker>,
+    channel_id: Id<ChannelMarker>,
     event: EventType,
     member: Option<&Member>,
     user: &User,
 ) {
-    // Fetch avatar
-    let mut user_avatar: Vec<u8> = vec![];
-
-    if let Some(avatar_url) = display_avatar_url(&user, 512) {
-        if let Ok(res) = reqwest::get(avatar_url).await {
-            if let Ok(bytes) = res.bytes().await {
-                user_avatar = bytes.to_vec();
-            }
-        }
-        if user_avatar.is_empty() {
-            user_avatar = IMG_DEFAULT_AVATAR.to_vec();
-        }
-    } else {
-        user_avatar = IMG_DEFAULT_AVATAR.to_vec();
-    }
-
     let background = match event {
-        EventType::MemberAdd => {
-            /*
-            let date = match SystemTime::now().duration_since(UNIX_EPOCH) {
-                Ok(duration) => duration.as_millis(),
-                Err(_) => 0,
-            };
-            let join_age = match member.unwrap().joined_at {
-                Some(joined_at) => date - (joined_at.as_micros() / 1000) as u128,
-                None => 0,
-            };
-            let account_age = date - user.id.timestamp() as u128;
-            const TIME_LIMIT: u128 = 300 * 1000;
-            if join_age < TIME_LIMIT || account_age < TIME_LIMIT {
-                CARD_NEW
-            } else {
-                CARD_BACK
-            }
-            */
-            CARD_NEW
-        }
-        EventType::MemberUpdate => CARD_BOOST,
-        EventType::MemberRemove => CARD_LEFT,
+        EventType::MemberAdd => CARD_NEW,
         EventType::BanAdd => CARD_MOD,
-        _ => CARD_LEFT,
+        EventType::MemberRemove => CARD_LEFT,
+        _ => CARD_BOOST
     };
 
-    let mut data = vec![];
-    // Scope to fix safe issue with skia
-    {
-        let mut surface = match skia_safe::surfaces::raster_n32_premul(ISize {
-            width: 2800,
-            height: 560,
-        }) {
-            Some(surface) => surface,
-            None => {
-                error("Failed to create canvas surface.");
-                return;
-            }
-        };
-        let canvas = surface.canvas();
+    let avatar = fetch_avatar(ctx, user).await;
+    let name = user.name.clone();
+    let nickname = user
+        .global_name
+        .clone()
+        .unwrap_or_else(|| "Undefined".to_owned());
 
-        let background_image = match load_image_from_bytes(background) {
-            Some(image) => image,
-            None => {
-                error("Failed to load background image.");
-                return;
-            }
-        };
-        canvas.draw_image(&background_image, Point { x: 0.0, y: 0.0 }, None);
-        canvas.save();
+    let card = tokio::task::spawn_blocking(move || {
+        render_card(background, &avatar, &name, &nickname)
+    })
+    .await;
 
-        // Avatar
-        let cdn_avatar = match load_image_from_bytes(&user_avatar) {
-            Some(image) => image,
-            None => {
-                error("Failed to decode user avatar image.");
-                return;
-            }
-        };
-        let avatar = match resize_image(cdn_avatar, 400, 400) {
-            Some(image) => image,
-            None => {
-                error("Failed to resize user avatar image.");
-                return;
-            }
-        };
-        draw_circle(canvas, avatar, 204.0, 360.0, 200.0);
-
-        if !draw_text_with_font(canvas, &user.name, FONT_FREDOKA, 200.0, 530.0, 140.0) {
-            error("Failed to resize user avatar image.");
+    let png = match card {
+        Ok(Ok(png)) => png,
+        Ok(Err(reason)) => {
+            tracing::error!(reason, "falha ao gerar o card");
             return;
         }
-
-        let nickname = match user.global_name.as_ref() {
-            Some(nickname) => nickname,
-            None => "Undefined",
-        };
-        if !draw_text_with_font(
-            canvas,
-            &format!("@{}", nickname),
-            FONT_ROBOTO,
-            96.0,
-            530.0,
-            380.0,
-        ) {
-            error("Failed to resize user avatar image.");
+        Err(err) => {
+            tracing::error!(?err, "a tarefa de renderização do card falhou");
             return;
         }
+    };
 
-        let image = surface.image_snapshot();
-        let encoded_data = match image.encode(None, EncodedImageFormat::PNG, Some(100)) {
-            Some(data) => data,
-            None => {
-                error("Failed to encode card image.");
-                return;
-            }
-        };
+    // Entrada: horário em que o membro entrou; demais eventos: agora.
+    let timestamp = match (event, member.and_then(|m| m.joined_at)) {
+        (EventType::MemberAdd, Some(joined_at)) => joined_at.as_secs(),
+        _ => now_secs(),
+    };
+    let content = format!("<t:{timestamp}:F>");
 
-        data = encoded_data.to_vec();
-    }
+    let attachment = Attachment::from_bytes("Card.png".to_string(), png, 0);
 
-    let mut utc = String::new();
-    if event == EventType::MemberAdd {
-        let joined_at = match member.unwrap().joined_at {
-            Some(timestamp) => timestamp.as_secs(),
-            None => 0,
-        };
-        utc.push_str(&format!("<t:{}:F>", joined_at));
-    } else {
-        let timeout_until = Utc::now();
-        match Timestamp::from_micros(timeout_until.timestamp_micros()) {
-            Ok(time) => {
-                utc = format!("<t:{}:F>", time.as_secs());
-            },
-            Err(err) => {
-                error(&format!(
-                    "Error trying to parse DataTime to Timestamp\n└ {:?}",
-                    err
-                ));
-            }
-        };
-    }
-    let attachment = Attachment::from_bytes("Card.png".to_string(), data, 0);
-
-    let res = ctx
+    if let Err(err) = ctx
         .http
-        .create_message(channel_id.clone())
+        .create_message(channel_id)
         .attachments(&[attachment])
-        .content(&utc)
-        .await;
-
-    if let Err(err) = res {
-        error(&format!(
-            "Error trying to send card to system channel\nʟ {:?}",
-            err
-        ));
+        .content(&content)
+        .await
+    {
+        tracing::error!(?err, "falha ao enviar o card para o canal de sistema");
     }
 }
+/*
+pub async fn global_boost(ctx: &Context, user: &User, channel_id: Id<ChannelMarker>) {
+    let username = user.global_name.as_deref().unwrap_or(&user.name);
 
-pub async fn global_boost(ctx: &Context, user: &User, channel_id: &Id<ChannelMarker>) {
-    let avatar_url = display_avatar_url(user, 256).unwrap_or(String::new());
-    let username = user.global_name.clone().unwrap_or(user.name.clone());
+    // Bug corrigido: o formato antigo era "<@${}>" (sobra do JS), gerando "<@$123>",
+    // que o Discord não reconhece como menção.
     let description = format!(
-        "**<a:boost:{}> <@${}> became a <@&${}>**\n\n🚀 Thanks for boosting the server!",
-        &EMOJIS.animated.boost, user.id, &GUILD.roles.boosters
+        "**<a:boost:{}> <@{}> became a <@&{}>**\n\n🚀 Thanks for boosting the server!",
+        EMOJIS.animated.boost, user.id, GUILD.roles.boosters
     );
 
     let mut embed = EmbedBuilder::new()
         .color(COLORS.nitro)
         .description(description);
 
-    if let Ok(author) = ImageSource::url(&avatar_url) {
-        embed = embed.author(
-            EmbedAuthorBuilder::new(username.as_str())
-                .icon_url(author.clone())
-                .build(),
-        );
-        embed = embed.thumbnail(author);
+    if let Some(url) = display_avatar_url(user, 256) {
+        if let Ok(image) = ImageSource::url(url) {
+            embed = embed
+                .author(EmbedAuthorBuilder::new(username).icon_url(image.clone()).build())
+                .thumbnail(image);
+        }
     }
-
-    let embed = embed.build();
 
     if let Err(err) = ctx
         .http
-        .create_message(channel_id.clone())
-        .embeds(&[embed])
+        .create_message(channel_id)
+        .embeds(&[embed.build()])
         .await
     {
-        error(&format!("Failed to send message\n└ {:?}", err));
+        tracing::error!(?err, "falha ao enviar a mensagem de boost");
     }
 }
+*/

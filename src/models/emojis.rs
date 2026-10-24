@@ -1,3 +1,4 @@
+use super::de::str_to_u64;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -8,13 +9,6 @@ pub struct Emojis {
     pub animated: Animated,
 }
 
-fn str_to_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Animated {

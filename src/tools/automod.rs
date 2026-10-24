@@ -1,85 +1,81 @@
-use std::mem;
-
+use crate::{constants::*, discord::Context, functions::*};
 use twilight_http::request::AuditLogReason;
 use twilight_model::channel::Message;
-use chrono::Utc;
 use twilight_util::builder::embed::EmbedBuilder;
-use crate::constants::*;
-use crate::discord::*;
-use crate::functions::*;
 
+const REASON: &str = "Captured by mousetrap.";
+const WEEK_SECS: i64 = 60 * 60 * 24 * 7;
+const HACKED_ACCOUNT_DM: &str = "Hello! Bangboo has identified that your account sent a series of suspicious messages on the server's channels. As you are a long-time member of the server, your ban has been automatically removed since your account was likely hacked. I recommend that you review your account security!";
+
+/// Qualquer mensagem no canal-armadilha vira ban (com limpeza de 7 dias de mensagens).
+/// Membros com mais de uma semana de casa são desbanidos em seguida (conta provavelmente invadida).
 pub async fn mousetrap(ctx: &Context, message: &Message) {
     if message.channel_id.get() != GUILD.channels.mousetrap {
         return;
     }
-
-    let guild_id = match message.guild_id.as_ref() {
-        Some(guild_id) => guild_id,
-        None => {
-            return;
-        }
+    let Some(guild_id) = message.guild_id else {
+        return;
     };
 
     let id = message.author.id;
-    let reason = "Captured by mousetrap.";
-
-    let now = Utc::now().timestamp();
-    let mut should_unban = false;
-
-    if let Some(member) = message.member.as_ref() {
-        if let Some(joined_at) = member.joined_at {
-            let joined = joined_at.as_secs();
-            if (now - joined) > (60 * 60 * 24 * 7) {
-                should_unban = true;
-            }
-        }
-    }
-
     let username = message.author.name.as_str();
 
-    if should_unban {
-        if let Ok(dm_channel) = ctx.http.create_private_channel(id).await {
-            if let Ok(channel) = dm_channel.model().await {
-                let dm_content = "Hello! Bangboo has identified that your account sent a series of suspicious messages on the server's channels. As you are a long-time member of the server, your ban has been automatically removed since your account was likely hacked. I recommend that you review your account security!";
-                let embed = EmbedBuilder::new()
-                    .description(dm_content)
-                    .color(COLORS.warning)
-                    .build();
-                if let Err(err) = ctx.http.create_message(channel.id)
-                    .embeds(&[embed])
-                    .await {
-                        error(&format!("Failed to send DM to {} after being captured by mousetrap\n└ {:?}", username, err));
-                    }
-            }
-        }
+    let long_time_member = message
+        .member
+        .as_ref()
+        .and_then(|member| member.joined_at)
+        .is_some_and(|joined_at| now_secs() - joined_at.as_secs() > WEEK_SECS);
+
+    // O DM precisa sair antes do ban: depois dele o bot pode perder o contexto em comum.
+    if long_time_member {
+        notify_hacked_account(ctx, id, username).await;
     }
 
-    if let Err(err) = ctx
-        .http
-        .create_ban(guild_id.clone(), id)
-        .delete_message_seconds(604_800)
-        .reason(reason)
-        .await
-    {
-        error(&format!("Failed to ban user\n└ {:?}", err));
-        return;
-    }
-
+    // Melhor esforço: o ban abaixo também apaga mensagens recentes, então isto pode já não existir.
     if let Err(err) = ctx
         .http
         .delete_message(message.channel_id, message.id)
-        .reason(reason)
+        .reason(REASON)
         .await
     {
-        error(&format!(
-            "Failed to delete mousetrap message from {}\n└ {:?}",
-            username, err
-        ));
+        tracing::debug!(?err, username, "não foi possível apagar a mensagem do mousetrap");
     }
 
-    if should_unban {
-        if let Err(err) = ctx.http.delete_ban(guild_id.clone(), id).await {
-            error(&format!("Failed to unban {} after being captured by mousetrap\n└ {:?}", username, err));
+    if let Err(err) = ctx
+        .http
+        .create_ban(guild_id, id)
+        .delete_message_seconds(604_800)
+        .reason(REASON)
+        .await
+    {
+        tracing::error!(?err, username, "falha ao banir usuário capturado pelo mousetrap");
+        return;
+    }
+
+    if long_time_member {
+        if let Err(err) = ctx.http.delete_ban(guild_id, id).await {
+            tracing::error!(?err, username, "falha ao desbanir após o mousetrap");
         }
+    }
+}
+
+async fn notify_hacked_account(
+    ctx: &Context,
+    id: twilight_model::id::Id<twilight_model::id::marker::UserMarker>,
+    username: &str,
+) {
+    let result = async {
+        let channel = ctx.http.create_private_channel(id).await?.model().await?;
+        let embed = EmbedBuilder::new()
+            .description(HACKED_ACCOUNT_DM)
+            .color(COLORS.warning)
+            .build();
+        ctx.http.create_message(channel.id).embeds(&[embed]).await?;
+        Ok::<(), crate::models::BotError>(())
+    }
+    .await;
+
+    if let Err(err) = result {
+        tracing::error!(%err, username, "falha ao enviar DM após captura pelo mousetrap");
     }
 }
