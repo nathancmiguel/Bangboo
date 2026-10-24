@@ -1,0 +1,34 @@
+# Essential structure
+# - /assets
+# - /src
+# - /.env
+# - /.discloudignore
+# - /discloud.config
+# - /Cargo.toml
+
+# Ignored structure
+
+# Folders
+/.git
+/.vscode
+/.idea
+/assets/icons
+/assets/figma
+/target
+/discloud
+
+# Files
+/.env.development
+/.env.dev
+/.env.example
+/.gitignore
+/LICENSE
+/README.md
+
+# Extensions
+*.fig
+*.lock
+*.md
+*.zip
+*.exe
+*.development.json
