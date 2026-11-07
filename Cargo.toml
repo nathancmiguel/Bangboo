@@ -13,11 +13,11 @@ default = []
 gemini = ["dep:genai"]
 
 [dependencies]
-twilight-cache-inmemory = { version = "0.17" }
-twilight-gateway = { version = "0.17" }
-twilight-http = { version = "0.17" }
-twilight-model = { version = "0.17" }
-twilight-util = { version = "0.17", features = ["builder", "snowflake"] }
+twilight-cache-inmemory = { version = "0.18" }
+twilight-gateway = { version = "0.18" }
+twilight-http = { version = "0.18" }
+twilight-model = { version = "0.18" }
+twilight-util = { version = "0.18", features = ["builder", "snowflake"] }
 discloud-rs = { git = "https://github.com/Cesio137/discloud-rs.git", branch = "dev" }
 dotenvy = { version = "0.15" }
 genai = { version = "0.7", optional = true }
@@ -25,7 +25,7 @@ regex = { version = "1.13" }
 reqwest = { version = "0.13" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
-skia-safe = { version = "0.153", features = ["textlayout"] }
+skia-safe = { version = "0.157", features = ["textlayout"] }
 tokio = { version = "1.54", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

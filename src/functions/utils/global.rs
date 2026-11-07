@@ -7,13 +7,11 @@ use twilight_model::{
     id::{Id, marker::ChannelMarker},
     user::User,
 };
-use twilight_util::builder::embed::{EmbedAuthorBuilder, EmbedBuilder, ImageSource};
 
-/// Baixa o avatar do usuário (com timeout, via `reqwest::Client` compartilhado) ou usa o padrão.
-async fn fetch_avatar(ctx: &Context, user: &User) -> Vec<u8> {
-    let Some(url) = display_avatar_url(user, 512) else {
-        return IMG_DEFAULT_AVATAR.to_vec();
-    };
+/// Baixa o avatar do usuário (com timeout, via `reqwest::Client` compartilhado).
+/// `None` = usar o avatar padrão (embutido no binário, sem cópia).
+async fn fetch_avatar(ctx: &Context, user: &User) -> Option<impl AsRef<[u8]> + Send + 'static> {
+    let url = display_avatar_url(user, 512)?;
 
     // `error_for_status` evita tratar uma página de erro (404/429) como se fosse uma imagem.
     let bytes = async {
@@ -23,11 +21,11 @@ async fn fetch_avatar(ctx: &Context, user: &User) -> Vec<u8> {
     .await;
 
     match bytes {
-        Ok(bytes) if !bytes.is_empty() => bytes.to_vec(),
-        Ok(_) => IMG_DEFAULT_AVATAR.to_vec(),
+        Ok(bytes) if !bytes.is_empty() => Some(bytes),
+        Ok(_) => None,
         Err(err) => {
-            tracing::warn!(?err, "falha ao baixar o avatar; usando o avatar padrão");
-            IMG_DEFAULT_AVATAR.to_vec()
+            tracing::warn!(%err, "falha ao baixar o avatar; usando o avatar padrão");
+            None
         }
     }
 }
@@ -82,7 +80,7 @@ pub async fn global_message(
         EventType::MemberAdd => CARD_NEW,
         EventType::BanAdd => CARD_MOD,
         EventType::MemberRemove => CARD_LEFT,
-        _ => CARD_BOOST
+        _ => CARD_BOOST,
     };
 
     let avatar = fetch_avatar(ctx, user).await;
@@ -93,7 +91,8 @@ pub async fn global_message(
         .unwrap_or_else(|| "Undefined".to_owned());
 
     let card = tokio::task::spawn_blocking(move || {
-        render_card(background, &avatar, &name, &nickname)
+        let avatar = avatar.as_ref().map_or(IMG_DEFAULT_AVATAR, |bytes| bytes.as_ref());
+        render_card(background, avatar, &name, &nickname)
     })
     .await;
 
@@ -104,7 +103,7 @@ pub async fn global_message(
             return;
         }
         Err(err) => {
-            tracing::error!(?err, "a tarefa de renderização do card falhou");
+            tracing::error!(%err, "a tarefa de renderização do card falhou");
             return;
         }
     };
@@ -125,39 +124,6 @@ pub async fn global_message(
         .content(&content)
         .await
     {
-        tracing::error!(?err, "falha ao enviar o card para o canal de sistema");
+        tracing::error!(%err, "falha ao enviar o card");
     }
 }
-/*
-pub async fn global_boost(ctx: &Context, user: &User, channel_id: Id<ChannelMarker>) {
-    let username = user.global_name.as_deref().unwrap_or(&user.name);
-
-    // Bug corrigido: o formato antigo era "<@${}>" (sobra do JS), gerando "<@$123>",
-    // que o Discord não reconhece como menção.
-    let description = format!(
-        "**<a:boost:{}> <@{}> became a <@&{}>**\n\n🚀 Thanks for boosting the server!",
-        EMOJIS.animated.boost, user.id, GUILD.roles.boosters
-    );
-
-    let mut embed = EmbedBuilder::new()
-        .color(COLORS.nitro)
-        .description(description);
-
-    if let Some(url) = display_avatar_url(user, 256) {
-        if let Ok(image) = ImageSource::url(url) {
-            embed = embed
-                .author(EmbedAuthorBuilder::new(username).icon_url(image.clone()).build())
-                .thumbnail(image);
-        }
-    }
-
-    if let Err(err) = ctx
-        .http
-        .create_message(channel_id)
-        .embeds(&[embed.build()])
-        .await
-    {
-        tracing::error!(?err, "falha ao enviar a mensagem de boost");
-    }
-}
-*/

@@ -9,12 +9,13 @@ use crate::{
     discord::Context,
     functions::{
         ModalFields, defer_reply, filters::filter_users_from_mod_action,
-        filters::invoker_is_staff, get_modal_data, officer_cui_action_embed, update_reply,
-        update_with_embed,
+        filters::invoker_is_staff, get_modal_data, officer_cui_action_embed, response_data,
+        update_reply, update_with_embed,
     },
     models::BotResult,
 };
 use twilight_model::{
+    application::interaction::InteractionDataResolved,
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
     id::{
@@ -23,10 +24,16 @@ use twilight_model::{
     },
     user::User,
 };
-use twilight_util::builder::InteractionResponseDataBuilder;
 
-/// Todos os modais de moderação estavam aqui, um por trait impl. Agora é um `match`;
-/// o `unban`, que antes ficou de fora da lista de handlers, está registrado.
+/// `custom_id`s tratados por `dispatch` (usado no log de inicialização).
+pub const IDS: &[&str] = &[
+    ids::MODAL_BAN,
+    ids::MODAL_KICK,
+    ids::MODAL_TIMEOUT,
+    ids::MODAL_UNBAN,
+    ids::MODAL_DELETE_MESSAGE,
+];
+
 pub async fn dispatch(ctx: &Context, interaction: &InteractionCreate, custom_id: &str) -> BotResult {
     match custom_id {
         ids::MODAL_BAN => ban::run(ctx, interaction).await,
@@ -48,6 +55,7 @@ struct ModJob<'a> {
     guild_id: Id<GuildMarker>,
     moderator: &'a User,
     fields: ModalFields<'a>,
+    resolved: Option<&'a InteractionDataResolved>,
 }
 
 impl<'a> ModJob<'a> {
@@ -78,6 +86,7 @@ impl<'a> ModJob<'a> {
             guild_id,
             moderator,
             fields: ModalFields::new(&data.components),
+            resolved: data.resolved.as_ref(),
         })
     }
 
@@ -92,7 +101,7 @@ impl<'a> ModJob<'a> {
             return None;
         };
 
-        match filter_users_from_mod_action(self.ctx, self.guild_id, selected).await {
+        match filter_users_from_mod_action(self.ctx, self.guild_id, selected, self.resolved).await {
             Ok(users) if users.is_empty() => {
                 fail(self.ctx, self.interaction, "No valid users selected.").await;
                 None
@@ -118,10 +127,7 @@ impl<'a> ModJob<'a> {
         reason: &str,
     ) {
         let embed = officer_cui_action_embed(self.moderator, action, success, failed, reason);
-        let payload = InteractionResponseDataBuilder::new()
-            .flags(MessageFlags::EPHEMERAL)
-            .embeds(vec![embed])
-            .build();
+        let payload = response_data(MessageFlags::EPHEMERAL, Some(vec![embed]), None);
 
         update_reply(self.ctx, self.interaction, payload).await;
     }

@@ -10,7 +10,7 @@ const HACKED_ACCOUNT_DM: &str = "Hello! Bangboo has identified that your account
 /// Qualquer mensagem no canal-armadilha vira ban (com limpeza de 7 dias de mensagens).
 /// Membros com mais de uma semana de casa são desbanidos em seguida (conta provavelmente invadida).
 pub async fn mousetrap(ctx: &Context, message: &Message) {
-    if message.channel_id.get() != GUILD.channels.mousetrap {
+    if message.channel_id != GUILD.channels.mousetrap {
         return;
     }
     let Some(guild_id) = message.guild_id else {

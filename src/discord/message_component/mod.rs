@@ -7,6 +7,9 @@ use crate::{
 };
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 
+/// `custom_id`s tratados por `dispatch` (usado no log de inicialização).
+pub const IDS: &[&str] = &[ids::DISCLOUD_STATUS_REFRESH, ids::DISCLOUD_LOGS_REFRESH];
+
 pub async fn dispatch(ctx: &Context, interaction: &InteractionCreate, custom_id: &str) -> BotResult {
     match custom_id {
         ids::DISCLOUD_STATUS_REFRESH => {

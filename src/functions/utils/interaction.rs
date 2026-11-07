@@ -11,7 +11,7 @@ use twilight_model::{
     http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType},
     id::{Id, marker::UserMarker},
 };
-use twilight_util::builder::{InteractionResponseDataBuilder, embed::EmbedBuilder};
+use twilight_util::builder::embed::EmbedBuilder;
 
 // ---------------------------------------------------------------------------------------------
 // Acesso aos dados da interação
@@ -106,6 +106,20 @@ fn embed(color: u32, content: &str) -> Embed {
     EmbedBuilder::new().color(color).description(content).build()
 }
 
+/// Payload com flags + embeds/componentes (substitui o `InteractionResponseDataBuilder`, depreciado).
+pub fn response_data(
+    flags: MessageFlags,
+    embeds: Option<Vec<Embed>>,
+    components: Option<Vec<Component>>,
+) -> InteractionResponseData {
+    InteractionResponseData {
+        flags: Some(flags),
+        embeds,
+        components,
+        ..Default::default()
+    }
+}
+
 async fn respond(
     ctx: &Context,
     interaction: &InteractionCreate,
@@ -144,11 +158,7 @@ pub async fn reply(
 }
 
 pub async fn defer_reply(ctx: &Context, interaction: &InteractionCreate, ephemeral: bool) -> bool {
-    let data = ephemeral.then(|| {
-        InteractionResponseDataBuilder::new()
-            .flags(MessageFlags::EPHEMERAL)
-            .build()
-    });
+    let data = ephemeral.then(|| response_data(MessageFlags::EPHEMERAL, None, None));
 
     respond(
         ctx,
@@ -273,10 +283,7 @@ pub async fn reply_with_embed(
     color: u32,
     content: &str,
 ) -> bool {
-    let payload = InteractionResponseDataBuilder::new()
-        .embeds(vec![embed(color, content)])
-        .flags(flags)
-        .build();
+    let payload = response_data(flags, Some(vec![embed(color, content)]), None);
 
     reply(ctx, interaction, payload).await
 }
@@ -288,10 +295,7 @@ pub async fn update_with_embed(
     color: u32,
     content: &str,
 ) -> bool {
-    let payload = InteractionResponseDataBuilder::new()
-        .embeds(vec![embed(color, content)])
-        .flags(flags)
-        .build();
+    let payload = response_data(flags, Some(vec![embed(color, content)]), None);
 
     update_reply(ctx, interaction, payload).await
 }
@@ -304,10 +308,7 @@ pub async fn followup_with_embed(
     color: u32,
     content: &str,
 ) -> bool {
-    let payload = InteractionResponseDataBuilder::new()
-        .embeds(vec![embed(color, content)])
-        .flags(flags)
-        .build();
+    let payload = response_data(flags, Some(vec![embed(color, content)]), None);
 
     followup_reply(ctx, interaction, payload).await
 }
@@ -323,8 +324,9 @@ pub async fn update_v2(ctx: &Context, interaction: &InteractionCreate, component
 }
 
 fn v2_payload(component: Component) -> InteractionResponseData {
-    InteractionResponseDataBuilder::new()
-        .flags(MessageFlags::EPHEMERAL | MessageFlags::IS_COMPONENTS_V2)
-        .components(vec![component])
-        .build()
+    response_data(
+        MessageFlags::EPHEMERAL | MessageFlags::IS_COMPONENTS_V2,
+        None,
+        Some(vec![component]),
+    )
 }
