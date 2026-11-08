@@ -18,7 +18,7 @@ twilight-gateway = { version = "0.18" }
 twilight-http = { version = "0.18" }
 twilight-model = { version = "0.18" }
 twilight-util = { version = "0.18", features = ["builder", "snowflake"] }
-discloud-rs = { git = "https://github.com/Cesio137/discloud-rs.git", branch = "dev" }
+discloud-rs = { git = "https://github.com/nathancmiguel/discloud-rs.git", branch = "dev" }
 dotenvy = { version = "0.15" }
 genai = { version = "0.7", optional = true }
 regex = { version = "1.13" }
