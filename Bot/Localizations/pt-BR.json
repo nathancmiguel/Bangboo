@@ -1,0 +1,47 @@
+{
+  "commands": {
+    "discloud": {
+      "description": "Mostra o status ou os logs do bot na hospedagem",
+      "parameters": {
+        "fetch": {
+          "description": "Informação a buscar"
+        }
+      }
+    },
+    "fab": {
+      "description": "Produtos no marketplace da Fab"
+    },
+    "moderate": {
+      "description": "A igualdade perante a lei é a base da justiça ⚖.",
+      "parameters": {
+        "action": {
+          "description": "Ação de moderação a aplicar"
+        }
+      }
+    },
+    "profile": {
+      "description": "Mostra as suas informações ou as de outro membro do servidor",
+      "parameters": {
+        "user": {
+          "description": "Usuário selecionado"
+        }
+      }
+    },
+    "social": {
+      "description": "Redes sociais"
+    }
+  },
+  "enums": {
+    "ModAction": {
+      "DeleteMessage": "apagar mensagem",
+      "Timeout": "silenciar",
+      "Kick": "expulsar",
+      "Ban": "banir",
+      "Unban": "desbanir"
+    },
+    "DiscloudFetch": {
+      "Status": "status",
+      "Logs": "logs"
+    }
+  }
+}

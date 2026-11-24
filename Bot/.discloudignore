@@ -1,0 +1,32 @@
+# Enviado para a Discloud (a partir da pasta Bot/)
+# - /Assets (avatar, cards, fonts, member)
+# - /Data
+# - /Localizations
+# - /appsettings.json (tokens)
+# - /discloud.config
+# - /Bot.csproj e o código .cs
+
+# Pastas
+/.git
+/.vscode
+/.idea
+/.vs
+/bin
+/obj
+/discloud
+/Assets/icons
+/Assets/figma
+
+# Arquivos
+/appsettings.json.example
+/appsettings.Development.json
+/.env
+/.env.example
+/.gitignore
+
+# Extensões
+*.fig
+*.md
+*.zip
+*.exe
+*.user

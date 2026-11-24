@@ -1,0 +1,16 @@
+{
+    "Discord": {
+        "Token": ""
+    },
+    "Discloud": {
+        "Token": "",
+        "AppId": ""
+    },
+    "Logging": {
+        "LogLevel": {
+            "Default": "Debug",
+            "System": "Information",
+            "Microsoft": "Information"
+        }
+    }
+}

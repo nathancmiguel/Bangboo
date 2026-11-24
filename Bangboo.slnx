@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/Bot/">
+    <Project Path="Bot/Bot.csproj" />
+  </Folder>
+</Solution>
