@@ -89,10 +89,10 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
     public async Task Timeout()
     {
         // O cargo pode ter sido removido entre abrir o modal e enviar.
-        await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
+        var guild = await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
 
         var selectedUsers = GetUserMenu("timeout-users")?.SelectedValues;
-        var timeout = GetStringMenu("timeout-duration")?.SelectedValues.FirstOrDefault();
+        var timeout = GetStringMenu("timeout-duration")?.SelectedValues?.FirstOrDefault();
         var reason = GetTextInput("timeout-reason");
 
         if (selectedUsers is null || !selectedUsers.Any() || timeout is null)
@@ -111,9 +111,10 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
 
         var timeoutUntil = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
         var (successList, failList) = await RunPerUser(
+            guild,
             selectedUsers.Select(u => u.Id),
             skipOwner: true,
-            id => Context.Guild.ModifyUserAsync(
+            id => guild.ModifyUserAsync(
                 id,
                 properties => properties.WithTimeOutUntil(timeoutUntil),
                 new RestRequestProperties { AuditLogReason = AuditReason(reason, "timeout") }));
@@ -126,7 +127,7 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
     public async Task Kick()
     {
         // O cargo pode ter sido removido entre abrir o modal e enviar.
-        await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
+        var guild = await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
 
         var selectedUsers = GetUserMenu("kick-users")?.SelectedValues;
         var reason = GetTextInput("kick-reason");
@@ -139,9 +140,10 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
         await Context.Interaction.SendResponseAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var (successList, failList) = await RunPerUser(
+            guild,
             selectedUsers.Select(u => u.Id),
             skipOwner: true,
-            id => Context.Guild.KickUserAsync(id, new() { AuditLogReason = AuditReason(reason, "kick") }));
+            id => guild.KickUserAsync(id, new() { AuditLogReason = AuditReason(reason, "kick") }));
 
         await Respond(EmbedBuilder.OfficerCuiAction(Context.User, "Kick", successList, failList, reason));
     }
@@ -151,7 +153,7 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
     public async Task Ban()
     {
         // O cargo pode ter sido removido entre abrir o modal e enviar.
-        await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
+        var guild = await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
 
         var selectedUsers = GetUserMenu("ban-users")?.SelectedValues;
         var reason = GetTextInput("ban-reason");
@@ -165,9 +167,10 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
 
         // Ban individual: o bulk ban marcava todo mundo como sucesso/falha de uma vez
         var (successList, failList) = await RunPerUser(
+            guild,
             selectedUsers.Select(u => u.Id),
             skipOwner: true,
-            id => Context.Guild.BanUserAsync(id, 604800, new() { AuditLogReason = AuditReason(reason, "ban") }));
+            id => guild.BanUserAsync(id, 604800, new() { AuditLogReason = AuditReason(reason, "ban") }));
 
         await Respond(EmbedBuilder.OfficerCuiAction(Context.User, "Ban", successList, failList, reason));
     }
@@ -177,7 +180,7 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
     public async Task Unban()
     {
         // O cargo pode ter sido removido entre abrir o modal e enviar.
-        await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
+        var guild = await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
 
         var selectedUsers = GetUserMenu("unban-users")?.SelectedValues;
 
@@ -189,9 +192,10 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
         await Context.Interaction.SendResponseAsync(InteractionCallback.DeferredMessage(MessageFlags.Ephemeral));
 
         var (successList, failList) = await RunPerUser(
+            guild,
             selectedUsers.Select(u => u.Id),
             skipOwner: false,
-            id => Context.Guild.UnbanUserAsync(id));
+            id => guild.UnbanUserAsync(id));
 
         await Respond(EmbedBuilder.OfficerCuiAction(Context.User, "Unban", successList, failList));
     }
@@ -233,6 +237,7 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
     }
 
     private async Task<(List<string> Success, List<string> Fail)> RunPerUser(
+        NetCord.Gateway.Guild guild,
         IEnumerable<ulong> userIds,
         bool skipOwner,
         Func<ulong, Task> action)
@@ -243,7 +248,7 @@ public class ModerationResponderModule(IOptions<Colors> colors, IModeratorRolesP
         foreach (var id in userIds.Distinct())
         {
             // O dono do servidor era ignorado silenciosamente; agora aparece como falha
-            if (skipOwner && id == Context.Guild.OwnerId)
+            if (skipOwner && id == guild.OwnerId)
             {
                 fail.Add($"<@{id}>");
                 continue;

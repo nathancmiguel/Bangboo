@@ -18,8 +18,11 @@ public sealed class ModeratorRolesProvider(IOptionsMonitor<Roles> roles) : IMode
 
 public static class ModeratorRolesProviderExtensions
 {
-    /// <summary>Lança <see cref="BotException"/> se o usuário não puder usar o <c>/moderate</c> nesta guild.</summary>
-    public static Task EnsureCanModerateAsync(
+    /// <summary>
+    /// Lança <see cref="BotException"/> se o usuário não puder usar o <c>/moderate</c> nesta guild.
+    /// Devolve a guild já validada (não nula).
+    /// </summary>
+    public static Task<NetCord.Gateway.Guild> EnsureCanModerateAsync(
         this IModeratorRolesProvider provider,
         NetCord.Gateway.Guild? guild,
         User user)
@@ -40,6 +43,6 @@ public static class ModeratorRolesProviderExtensions
             throw new BotException("You don't have a moderator role in this server.");
         }
 
-        return Task.CompletedTask;
+        return Task.FromResult(guild);
     }
 }

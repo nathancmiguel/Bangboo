@@ -1,34 +1,34 @@
-# Essential structure
-# - /assets
-# - /src
-# - /.env
-# - /.discloudignore
+# Enviado para a Discloud (raiz do repositório)
+# - /Dockerfile e /.dockerignore
 # - /discloud.config
-# - /Cargo.toml
+# - /Bot (código, Assets, Data, Localizations e appsettings.json com os tokens)
 
-# Ignored structure
-
-# Folders
+# Pastas
 /.git
 /.vscode
 /.idea
-/assets/icons
-/assets/figma
-/target
+/.vs
 /discloud
+/Bot/bin
+/Bot/obj
+/Bot/.idea
+/Bot/Assets/icons
+/Bot/Assets/figma
 
-# Files
-/.env.development
-/.env.dev
+# Arquivos
+/.env
 /.env.example
 /.gitignore
-/LICENSE
+/Bangboo.slnx
+/global.json
+/LICENCE
 /README.md
+/Bot/appsettings.json.example
+/Bot/appsettings.Development.json
 
-# Extensions
+# Extensões
 *.fig
-*.lock
 *.md
 *.zip
 *.exe
-*.development.json
+*.user

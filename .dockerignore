@@ -1,0 +1,10 @@
+**/bin
+**/obj
+**/.idea
+**/.vs
+.vscode
+.git
+Bot/Assets/icons
+Bot/Assets/figma
+Bot/appsettings.json.example
+*.md

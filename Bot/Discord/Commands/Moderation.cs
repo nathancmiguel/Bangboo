@@ -29,7 +29,7 @@ public class ModerationModule(IOptions<Colors> colors, IModeratorRolesProvider m
         [SlashCommandParameter(Name = "action", Description = "Moderation action to apply")] ModAction action)
     {
         // Dono, Administrador ou cargo kernel/stf (Data/guild.json).
-        await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
+        var guild = await moderatorRoles.EnsureCanModerateAsync(Context.Guild, Context.User);
 
         switch (action)
         {
@@ -55,7 +55,7 @@ public class ModerationModule(IOptions<Colors> colors, IModeratorRolesProvider m
                 break;
             case ModAction.Unban:
             {
-                var bannedMembers = await Context.Guild.GetBansAsync(new() { BatchSize = 25 }).Take(25).ToListAsync();
+                var bannedMembers = await guild.GetBansAsync(new() { BatchSize = 25 }).Take(25).ToListAsync();
                 if (bannedMembers.Count == 0)
                 {
                     var embed = EmbedBuilder.Res("There is no banned members in this guild", colors.Value.Danger);

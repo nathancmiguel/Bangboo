@@ -5,11 +5,11 @@ namespace Bangboo.Utils;
 
 public class EmbedBuilder
 {
-    public static EmbedProperties OfficerCuiAction(User user, string action, List<string> successList, List<string> failList, string reason = "")
+    public static EmbedProperties OfficerCuiAction(User user, string action, List<string> successList, List<string> failList, string? reason = null)
     {
         var author = new EmbedAuthorProperties()
             .WithName(user.GlobalName ?? user.Username)
-            .WithIconUrl(user.GetAvatarUrl().ToString());
+            .WithIconUrl((user.GetAvatarUrl() ?? user.DefaultAvatarUrl).ToString());
         
         var embed = new EmbedProperties()
                 .WithAuthor(author)
