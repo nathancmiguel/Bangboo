@@ -1,36 +1,35 @@
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
+use twilight_model::id::{
+    Id,
+    marker::{ChannelMarker, RoleMarker},
+};
 
-#[derive(Serialize, Deserialize)]
+/// IDs do servidor lidos de `data/guild.json`. O `Id` do twilight já aceita string e rejeita 0
+/// na desserialização (validada em `constants::validate`), então não há `Id::new` (que dá panic) no código.
+#[derive(Deserialize)]
 pub struct Guild {
     pub channels: Channels,
-
     pub roles: Roles,
 }
 
-fn str_to_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
-}
-
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct Channels {
-    #[serde(deserialize_with = "str_to_u64")]
-    pub announcement: u64,
-    #[serde(deserialize_with = "str_to_u64")]
-    pub mousetrap: u64,
+    pub announcement: Id<ChannelMarker>,
+    pub mousetrap: Id<ChannelMarker>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct Roles {
-    #[serde(deserialize_with = "str_to_u64")]
-    pub apps: u64,
-    #[serde(deserialize_with = "str_to_u64")]
-    pub kernel: u64,
-    #[serde(deserialize_with = "str_to_u64")]
-    pub stf: u64,
-    #[serde(deserialize_with = "str_to_u64")]
-    pub boosters: u64,
+    pub kernel: Id<RoleMarker>,
+    pub stf: Id<RoleMarker>,
+    pub boosters: Id<RoleMarker>,
+}
+
+impl Guild {
+    /// Dono (kernel) ou moderador (stf).
+    pub fn is_staff(&self, roles: &[Id<RoleMarker>]) -> bool {
+        roles
+            .iter()
+            .any(|&role| role == self.roles.kernel || role == self.roles.stf)
+    }
 }

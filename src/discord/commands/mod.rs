@@ -1,30 +1,48 @@
+//! Cada comando é um módulo com `NAME`, `command()` (definição) e `run()` (execução).
+//! Registro e despacho são só duas listas aqui: sem trait, sem `Box<dyn ...>`, sem `async_trait`.
+
 mod age;
-mod moderate;
 mod discloud;
-mod prompt;
 mod fab;
+mod moderate;
+#[cfg(feature = "gemini")]
+mod prompt;
 mod social;
 
-use crate::discord::*;
+use crate::{discord::Context, models::BotResult};
+use twilight_model::{
+    application::command::Command, gateway::payload::incoming::InteractionCreate,
+};
 
-pub fn prefix_commands() -> Vec<Box<dyn PrefixCommandHandler + Send + Sync>> {
-    let commands: Vec<Box<dyn PrefixCommandHandler + Send + Sync>> = vec![
-        //Box::new(prefix::canvas::Canvas),
+/// Definições enviadas ao Discord na inicialização.
+pub fn all() -> Vec<Command> {
+    #[allow(unused_mut)]
+    let mut commands = vec![
+        age::command(),
+        discloud::command(),
+        fab::command(),
+        moderate::command(),
+        social::command(),
     ];
+
+    #[cfg(feature = "gemini")]
+    commands.push(prompt::command());
 
     commands
 }
 
-pub fn slash_commands() -> Vec<Box<dyn SlashCommandHandler + Send + Sync>> {
-    let commands: Vec<Box<dyn SlashCommandHandler + Send + Sync>> =
-        vec![
-            Box::new(age::Age),
-            Box::new(discloud::Discloud),
-            Box::new(fab::Fab),
-            Box::new(moderate::Moderate),
-            //Box::new(prompt::Prompt),
-            Box::new(social::Social),
-        ];
-
-    commands
+pub async fn dispatch(ctx: &Context, interaction: &InteractionCreate, name: &str) -> BotResult {
+    match name {
+        age::NAME => age::run(ctx, interaction).await,
+        discloud::NAME => discloud::run(ctx, interaction).await,
+        fab::NAME => fab::run(ctx, interaction).await,
+        moderate::NAME => moderate::run(ctx, interaction).await,
+        social::NAME => social::run(ctx, interaction).await,
+        #[cfg(feature = "gemini")]
+        prompt::NAME => prompt::run(ctx, interaction).await,
+        _ => {
+            tracing::warn!(name, "comando sem handler");
+            Ok(())
+        }
+    }
 }

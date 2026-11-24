@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct Fab {
@@ -7,13 +7,6 @@ pub struct Fab {
     pub internet_protocol: ProductInfos,
 }
 
-fn str_to_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    s.parse::<u64>().map_err(serde::de::Error::custom)
-}
 
 #[derive(Serialize, Deserialize)]
 pub struct ProductInfos {

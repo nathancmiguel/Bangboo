@@ -1,87 +1,83 @@
-use crate::constants::*;
-use crate::discord::*;
-use crate::functions::*;
-use crate::tools::get_text;
-use async_trait::async_trait;
-use std::collections::VecDeque;
-use std::error::Error;
+use crate::{
+    constants::COLORS,
+    discord::Context,
+    functions::*,
+    models::BotResult,
+    tools::gemini::get_text,
+};
 use twilight_model::{
     application::{
         command::{Command, CommandOption, CommandType},
-        interaction::{application_command::CommandOptionValue, InteractionContextType},
+        interaction::{InteractionContextType, application_command::CommandOptionValue},
     },
     channel::message::MessageFlags,
     gateway::payload::incoming::InteractionCreate,
 };
-use twilight_util::builder::command::StringBuilder;
-use twilight_util::builder::embed::EmbedBuilder;
-use twilight_util::builder::InteractionResponseDataBuilder;
-use twilight_util::builder::command::CommandBuilder;
+use twilight_util::builder::command::{CommandBuilder, StringBuilder};
 
-pub struct Prompt;
+pub const NAME: &str = "prompt";
 
-#[async_trait]
-impl SlashCommandHandler for Prompt {
-    fn command(&self) -> Command {
-        let str_opt = CommandOption::from(StringBuilder::new("text", "Enter the text").build());
-        CommandBuilder::new("prompt", "Ask or interact with IA", CommandType::ChatInput)
-            .option(str_opt)
-            .contexts([InteractionContextType::Guild])
-            .build()
-    }
+/// Limite em **caracteres** por embed (a descrição de um embed aceita até 4096).
+const CHUNK_CHARS: usize = 3000;
 
-    async fn run(
-        &self,
-        ctx: Context,
-        interaction: &Box<InteractionCreate>,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let Some(command_data) = get_app_command_data(interaction) else {
-            error("Failed to parse command data");
-            return Ok(());
-        };
+pub fn command() -> Command {
+    // `required(true)`: antes a opção era opcional, mas o código fazia `options[0]` (panic se vazia).
+    let text = CommandOption::from(
+        StringBuilder::new("text", "Enter the text")
+            .required(true)
+            .build(),
+    );
 
-        let CommandOptionValue::String(question) = &command_data.options[0].value else {
-            error("Failed to parse command data");
-            return Ok(());
-        };
+    CommandBuilder::new(NAME, "Ask or interact with IA", CommandType::ChatInput)
+        .option(text)
+        .contexts([InteractionContextType::Guild])
+        .build()
+}
 
-        defer_reply(&ctx, interaction, true).await;
+/// Divide em pedaços de até `max` caracteres. A versão anterior fatiava por **bytes**
+/// (`&response[i..end]`), o que dá panic quando o corte cai no meio de um caractere UTF-8
+/// (qualquer acento em português, por exemplo).
+fn chunks(text: &str, max: usize) -> Vec<String> {
+    let chars: Vec<char> = text.chars().collect();
+    chars.chunks(max).map(|chunk| chunk.iter().collect()).collect()
+}
 
-        let response = get_text(question).await?;
+pub async fn run(ctx: &Context, interaction: &InteractionCreate) -> BotResult {
+    let question = get_app_command_data(interaction)
+        .and_then(|data| data.options.first())
+        .and_then(|option| match &option.value {
+            CommandOptionValue::String(value) => Some(value.as_str()),
+            _ => None,
+        });
+    let Some(question) = question else {
+        return Ok(());
+    };
 
-        let mut texts = VecDeque::new();
-        let mut i = 0;
-        let max_length = 3000;
+    defer_reply(ctx, interaction, true).await;
 
-        while i < response.len() {
-            let end = usize::min(i + max_length, response.len());
-            texts.push_back(response[i..end].to_string());
-            i += max_length;
-        }
-
-        let embed = EmbedBuilder::new()
-            .color(COLORS.green)
-            .description(texts.pop_front().unwrap_or_default())
-            .build();
-
-        let payload = InteractionResponseDataBuilder::new()
-            .flags(MessageFlags::EPHEMERAL)
-            .embeds(vec![embed])
-            .build();
-
-        update_reply(&ctx, interaction, payload).await;
-
-        while texts.len() > 0 {
-            followup_with_embed(
-                &ctx,
+    let response = match get_text(question).await {
+        Ok(response) => response,
+        Err(err) => {
+            tracing::error!(%err, "falha ao consultar o Gemini");
+            update_with_embed(
+                ctx,
                 interaction,
                 MessageFlags::EPHEMERAL,
-                COLORS.green,
-                &texts.pop_front().unwrap_or_default(),
+                COLORS.danger,
+                "Failed to get a response from the AI.",
             )
             .await;
+            return Ok(());
         }
+    };
 
-        Ok(())
+    let mut parts = chunks(&response, CHUNK_CHARS).into_iter();
+    let first = parts.next().unwrap_or_default();
+
+    update_with_embed(ctx, interaction, MessageFlags::EPHEMERAL, COLORS.green, &first).await;
+    for part in parts {
+        followup_with_embed(ctx, interaction, MessageFlags::EPHEMERAL, COLORS.green, &part).await;
     }
+
+    Ok(())
 }

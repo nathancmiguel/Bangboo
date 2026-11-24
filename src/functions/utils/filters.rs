@@ -1,42 +1,56 @@
-use crate::{constants::GUILD, discord::Context};
-use once_cell::sync::Lazy;
-use std::error::Error;
-use twilight_cache_inmemory::CacheableMember;
-use twilight_model::id::marker::GuildMarker;
-use twilight_model::id::{
-    marker::{RoleMarker, UserMarker},
-    Id,
+use crate::{constants::GUILD, discord::Context, models::BotResult};
+use twilight_http::error::ErrorType;
+use twilight_model::{
+    application::interaction::InteractionDataResolved,
+    gateway::payload::incoming::InteractionCreate,
+    id::{
+        Id,
+        marker::{GuildMarker, UserMarker},
+    },
 };
 
-pub fn filter_messages_by_user_id(ctx: &Context, user_ids: &[Id<UserMarker>]) {}
+/// Quem executou a interação é dono/moderador?
+pub fn invoker_is_staff(interaction: &InteractionCreate) -> bool {
+    interaction
+        .member
+        .as_ref()
+        .is_some_and(|member| GUILD.is_staff(&member.roles))
+}
 
+/// Remove da lista os usuários que são dono/moderadores (eles não podem ser alvo de ações de moderação).
+///
+/// Os cargos vêm de `resolved.members`, que o Discord envia junto com o `UserSelect`; o HTTP só é
+/// usado se algum membro não vier ali. Assim o bot não precisa manter um cache de membros na memória.
 pub async fn filter_users_from_mod_action(
     ctx: &Context,
-    guild_id: &Id<GuildMarker>,
+    guild_id: Id<GuildMarker>,
     user_ids: &[Id<UserMarker>],
-) -> Result<Vec<Id<UserMarker>>, Box<dyn Error + Send + Sync>> {
-    static KERNEL_ROLE: Lazy<Id<RoleMarker>> =
-        Lazy::new(|| Id::<RoleMarker>::new(GUILD.roles.kernel));
-    static STF_ROLE: Lazy<Id<RoleMarker>> = Lazy::new(|| Id::<RoleMarker>::new(GUILD.roles.stf));
+    resolved: Option<&InteractionDataResolved>,
+) -> BotResult<Vec<Id<UserMarker>>> {
+    let mut filtered = Vec::with_capacity(user_ids.len());
 
-    let mut filtered_users = Vec::with_capacity(user_ids.len());
-    for id in user_ids {
-        let roles = match ctx.cache.member(guild_id.clone(), id.clone()) {
-            Some(member) => member.roles().to_vec(),
-            None => {
-                let member = ctx
-                    .http
-                    .guild_member(guild_id.clone(), id.clone())
-                    .await?
-                    .model()
-                    .await?;
-                member.roles.clone()
-            }
+    for &id in user_ids {
+        let resolved_member = resolved.and_then(|resolved| resolved.members.get(&id));
+
+        let is_staff = match resolved_member {
+            Some(member) => GUILD.is_staff(&member.roles),
+            None => match ctx.http.guild_member(guild_id, id).await {
+                Ok(response) => GUILD.is_staff(&response.model().await?.roles),
+                // 404 = não é (mais) membro do servidor, logo não é staff. Qualquer outro erro
+                // (API fora do ar...) aborta a ação: na dúvida, não arriscamos punir um moderador.
+                Err(err) if is_not_found(&err) => false,
+                Err(err) => return Err(err.into()),
+            },
         };
-        if !roles.contains(&KERNEL_ROLE) && !roles.contains(&STF_ROLE) {
-            filtered_users.push(id.clone());
+
+        if !is_staff {
+            filtered.push(id);
         }
     }
 
-    Ok(filtered_users)
+    Ok(filtered)
+}
+
+fn is_not_found(err: &twilight_http::Error) -> bool {
+    matches!(err.kind(), ErrorType::Response { status, .. } if status.get() == 404)
 }

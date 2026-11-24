@@ -1,37 +1,13 @@
-use crate::{discord::*, tools::mousetrap};
-use std::error::Error;
-use twilight_gateway::{Event, EventType};
-pub struct MessageCreate;
+use crate::{discord::Context, models::BotResult, tools::mousetrap};
+use twilight_model::gateway::payload::incoming::MessageCreate;
 
-#[async_trait]
-impl EventHandler for MessageCreate {
-    fn event(&self) -> EventType {
-        EventType::MessageCreate
+pub async fn handle(ctx: &Context, message: &MessageCreate) -> BotResult {
+    // Bug corrigido: o filtro antigo olhava `message.member.user`, que o Discord não envia em
+    // MESSAGE_CREATE (sempre `None`), então bots nunca eram ignorados (nem o próprio Bangboo).
+    if message.author.bot {
+        return Ok(());
     }
 
-    async fn run(&self, ctx: Context, event: Event) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let message = match event {
-            Event::MessageCreate(e) => e,
-            _ => return Ok(()),
-        };
-
-        if let Some(member) = &message.member {
-            if let Some(user) = &member.user {
-                if user.bot {
-                    return Ok(());
-                }
-            }
-        }
-
-        mousetrap(&ctx, &message).await;
-
-        if let Some(callback) = HANDLERS
-            .prefix_command_handlers
-            .get(message.content.as_str())
-        {
-            callback.run(ctx, message).await?;
-        }
-
-        Ok(())
-    }
+    mousetrap(ctx, message).await;
+    Ok(())
 }

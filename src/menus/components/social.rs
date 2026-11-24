@@ -1,104 +1,56 @@
+use super::link_button;
 use crate::constants::{COLORS, EMOJIS};
-use twilight_model::channel::message::component::{ButtonStyle, SeparatorSpacingSize};
-use twilight_model::channel::message::{Component, EmojiReactionType};
-use twilight_model::id::marker::EmojiMarker;
-use twilight_model::id::Id;
+use twilight_model::channel::message::{Component, component::SeparatorSpacingSize};
 use twilight_util::builder::message::{
-    ActionRowBuilder, ButtonBuilder, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder,
+    ActionRowBuilder, ContainerBuilder, SeparatorBuilder, TextDisplayBuilder,
 };
 
 pub fn social_component() -> Component {
-    let text_display = TextDisplayBuilder::new("## FOLLOW ME ON SOCIAL MEDIA").build();
-    let separator = SeparatorBuilder::new()
-        .spacing(SeparatorSpacingSize::Small)
+    let icons = &EMOJIS.emojis_static;
+
+    let socials = [
+        ("Portifolio", icons.icons_p, "https://nathan-miguel.vercel.app/"),
+        ("Youtube", icons.icons_youtube, "https://www.youtube.com/@NathanMiguel1"),
+        ("Instagram", icons.icons_instagram, "https://www.instagram.com/nathan_cmiguel/"),
+        ("Github", icons.icons_github, "https://github.com/nathancmiguel"),
+        ("X/Twitter", icons.icons_x, "https://x.com/nathancmig"),
+    ];
+
+    let social_row = socials
+        .into_iter()
+        .fold(ActionRowBuilder::new(), |row, (label, emoji, url)| {
+            row.component(link_button(label, emoji, url))
+        })
         .build();
-    let social_row = ActionRowBuilder::new()
-        .component(Component::Button(
-            ButtonBuilder::new(ButtonStyle::Link)
-                .label("Portifolio")
-                .emoji(EmojiReactionType::Custom {
-                    id: Id::<EmojiMarker>::new(EMOJIS.emojis_static.icons_p),
-                    name: None,
-                    animated: false,
-                })
-                .url("https://nathan-miguel.vercel.app/")
-                .build(),
-        ))
-        .component(Component::Button(
-            ButtonBuilder::new(ButtonStyle::Link)
-                .label("Youtube")
-                .emoji(EmojiReactionType::Custom {
-                    id: Id::<EmojiMarker>::new(EMOJIS.emojis_static.icons_youtube),
-                    name: None,
-                    animated: false,
-                })
-                .url("https://www.youtube.com/@NathanMiguel1")
-                .build(),
-        ))
-        .component(Component::Button(
-            ButtonBuilder::new(ButtonStyle::Link)
-                .label("Instagram")
-                .emoji(EmojiReactionType::Custom {
-                    id: Id::<EmojiMarker>::new(EMOJIS.emojis_static.icons_instagram),
-                    name: None,
-                    animated: false,
-                })
-                .url("https://www.instagram.com/nathan_cmiguel/")
-                .build(),
-        ))
-        .component(Component::Button(
-            ButtonBuilder::new(ButtonStyle::Link)
-                .label("Github")
-                .emoji(EmojiReactionType::Custom {
-                    id: Id::<EmojiMarker>::new(EMOJIS.emojis_static.icons_github),
-                    name: None,
-                    animated: false,
-                })
-                .url("https://github.com/nathancmiguel")
-                .build(),
-        ))
-        .component(Component::Button(
-            ButtonBuilder::new(ButtonStyle::Link)
-                .label("X/Twitter")
-                .emoji(EmojiReactionType::Custom {
-                    id: Id::<EmojiMarker>::new(EMOJIS.emojis_static.icons_x),
-                    name: None,
-                    animated: false,
-                })
-                .url("https://x.com/nathancmig")
-                .build(),
+
+    let fab_row = ActionRowBuilder::new()
+        .component(link_button(
+            "Fab",
+            icons.icons_f,
+            "https://www.fab.com/sellers/Nathan%20Miguel",
         ))
         .build();
 
+    let separator = SeparatorBuilder::new()
+        .spacing(SeparatorSpacingSize::Small)
+        .build();
     let fab_separator = SeparatorBuilder::new()
         .spacing(SeparatorSpacingSize::Large)
         .divider(true)
         .build();
 
-    let fab_text_display = TextDisplayBuilder::new("## VISIT MY FAB STORE").build();
-
-    let fab_row = ActionRowBuilder::new()
-        .component(Component::Button(
-            ButtonBuilder::new(ButtonStyle::Link)
-                .label("Fab")
-                .emoji(EmojiReactionType::Custom {
-                    id: Id::<EmojiMarker>::new(EMOJIS.emojis_static.icons_f),
-                    name: None,
-                    animated: false,
-                })
-                .url("https://www.fab.com/sellers/Nathan%20Miguel")
-                .build(),
-        ))
-        .build();
-
     Component::Container(
         ContainerBuilder::new()
             .accent_color(Some(COLORS.green))
-            .component(Component::TextDisplay(text_display))
+            .component(Component::TextDisplay(
+                TextDisplayBuilder::new("## FOLLOW ME ON SOCIAL MEDIA").build(),
+            ))
             .component(Component::Separator(separator))
             .component(Component::ActionRow(social_row))
             .component(Component::Separator(fab_separator))
-            .component(Component::TextDisplay(fab_text_display))
+            .component(Component::TextDisplay(
+                TextDisplayBuilder::new("## VISIT MY FAB STORE").build(),
+            ))
             .component(Component::ActionRow(fab_row))
             .build(),
     )

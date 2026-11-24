@@ -1,59 +1,49 @@
+use crate::{constants::COLORS, functions::*};
 use twilight_model::{
     channel::message::Embed,
-    id::{marker::UserMarker, Id},
+    id::{Id, marker::UserMarker},
     user::User,
 };
 use twilight_util::builder::embed::{
     EmbedAuthorBuilder, EmbedBuilder, EmbedFieldBuilder, EmbedFooterBuilder, ImageSource,
 };
 
-use crate::{constants::COLORS, functions::*};
+const OFFICER_THUMBNAIL: &str = "https://raw.githubusercontent.com/BangbooBot/Bot/refs/heads/main/packages/bot/assets/avatar/Officer.png";
 
 pub fn officer_cui_action_embed(
-    user: &User,
+    moderator: &User,
     action: &str,
-    success_users: &[&Id<UserMarker>],
-    failed_users: &[&Id<UserMarker>],
+    success_users: &[Id<UserMarker>],
+    failed_users: &[Id<UserMarker>],
     reason: &str,
 ) -> Embed {
-    let user_name = user.global_name.as_ref().unwrap_or(&user.name);
-    let mut embed_author = EmbedAuthorBuilder::new(user_name);
-    if let Some(url) = &display_avatar_url(user, 0) {
-        embed_author = embed_author.url(url);
+    let name = moderator.global_name.as_ref().unwrap_or(&moderator.name);
+    let mut author = EmbedAuthorBuilder::new(name);
+    if let Some(url) = display_avatar_url(moderator, 0) {
+        author = author.url(url);
     }
-    let embed_author = embed_author.build();
-    let embed_footer = EmbedFooterBuilder::new(format!("Reason: {}", reason)).build();
-
-    let description = format!("### {} action!", action);
 
     let mut embed = EmbedBuilder::new()
         .color(COLORS.royal)
-        .author(embed_author)
+        .author(author.build())
         .title("**Officer Cui's panel**")
-        .description(description)
-        .footer(embed_footer);
+        .description(format!("### {action} action!"))
+        .footer(EmbedFooterBuilder::new(format!("Reason: {reason}")).build());
 
-    if let Ok(source) = ImageSource::url(
-        "https://raw.githubusercontent.com/BangbooBot/Bot/refs/heads/main/packages/bot/assets/avatar/Officer.png",
-    ) {
+    if let Ok(source) = ImageSource::url(OFFICER_THUMBNAIL) {
         embed = embed.thumbnail(source);
     }
 
-    if !success_users.is_empty() {
-        let mut field_description = Vec::new();
-        for user_id in success_users {
-            field_description.push(format!("<@{}>", user_id));
+    for (title, users) in [("**Success**", success_users), ("**Fail**", failed_users)] {
+        if users.is_empty() {
+            continue;
         }
-        let field = EmbedFieldBuilder::new("**Sucess**", field_description.join("\n")).build();
-        embed = embed.field(field);
-    }
-    if !failed_users.is_empty() {
-        let mut field_description = Vec::new();
-        for user_id in failed_users {
-            field_description.push(format!("<@{}>", user_id));
-        }
-        let field = EmbedFieldBuilder::new("**Fail**", field_description.join("\n")).build();
-        embed = embed.field(field);
+        let mentions = users
+            .iter()
+            .map(|id| format!("<@{id}>"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        embed = embed.field(EmbedFieldBuilder::new(title, mentions).build());
     }
 
     embed.build()

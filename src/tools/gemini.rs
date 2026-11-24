@@ -1,33 +1,20 @@
-use genai::chat::{ChatMessage, ChatRequest};
-use genai::Client;
-use once_cell::sync::Lazy;
-use std::error::Error;
-
-use crate::functions::error;
+use crate::models::BotResult;
+use genai::{
+    Client,
+    chat::{ChatMessage, ChatRequest},
+};
+use std::sync::LazyLock;
 
 const MODEL_GEMINI: &str = "gemini-3-flash-preview";
 
-pub static GEMINI: Lazy<Client> = Lazy::new(|| {
-    let client = match Client::new() {
-        Ok(client) => client,
-        Err(err) => {
-            error("Failed to create Gemini client");
-            panic!();
-        },
-    };
-    client
-});
+static GEMINI: LazyLock<Client> =
+    LazyLock::new(|| Client::new().expect("falha ao criar o cliente do Gemini"));
 
-pub async fn get_text(prompt: &str) -> Result<String, Box<dyn Error + Send + Sync>> {
-    _ = GEMINI.resolve_service_target(MODEL_GEMINI).await?;
+pub async fn get_text(prompt: &str) -> BotResult<String> {
+    GEMINI.resolve_service_target(MODEL_GEMINI).await?;
 
-    let chat_req = ChatRequest::new(vec![
-        //ChatMessage::system(""),
-        ChatMessage::user(prompt),
-    ]);
-
+    let chat_req = ChatRequest::new(vec![ChatMessage::user(prompt)]);
     let chat_res = GEMINI.exec_chat(MODEL_GEMINI, chat_req, None).await?;
 
-    let texts = &chat_res.into_texts();
-    Ok(texts.join("\n"))
+    Ok(chat_res.into_texts().join("\n"))
 }

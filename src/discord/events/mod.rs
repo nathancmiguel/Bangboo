@@ -1,21 +1,16 @@
-mod ban_add;
-mod member_add;
-mod member_remove;
-mod member_update;
-mod message_create;
-mod ready;
+pub mod ban_add;
+pub mod member_add;
+pub mod member_remove;
+pub mod member_update;
+pub mod message_create;
+pub mod ready;
 
-use super::base::*;
-
-pub fn events() -> Vec<Box<dyn EventHandler + Send + Sync>> {
-    let events: Vec<Box<dyn EventHandler + Send + Sync>> = vec![
-        Box::new(ban_add::BanAdd),
-        Box::new(member_add::MemberAdded),
-        Box::new(member_remove::MemberRemove),
-        Box::new(member_update::MemberUpdate),
-        Box::new(message_create::MessageCreate),
-        Box::new(ready::Ready),
-    ];
-
-    events
-}
+/// Eventos com handler (usado no log de inicialização; o despacho fica em `base/router.rs`).
+pub const NAMES: &[&str] = &[
+    "ready",
+    "ban_add",
+    "member_add",
+    "member_remove",
+    "member_update",
+    "message_create",
+];
